@@ -28,19 +28,19 @@ http://localhost:3000 에 접속해서 아무 닉네임이나 고르고 PIN `000
 
 ## 배포
 
-Supabase에 `supabase/schema.sql`을 실행하고, Vercel에 환경변수 3개를 넣으면 됩니다.
+Vercel에 저장소를 연결하고, Vercel 안에서 Neon(DB)과 Blob(스크린샷)을 만들어 붙인 뒤 `db/schema.sql`을 실행하면 됩니다. 모두 무료 플랜으로 충분합니다.
 자세한 순서는 [docs/DEPLOY.md](docs/DEPLOY.md)에 있습니다.
 운영하면서 신경 쓸 것(무료 플랜 일시정지, 스키마 변경, 보안 등)은 [docs/NOTES.md](docs/NOTES.md)에 정리해 두었습니다.
 
 | 환경변수 | 설명 |
 | --- | --- |
-| `SUPABASE_URL` | Supabase 프로젝트 URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role 키 (서버 전용) |
+| `DATABASE_URL` | Neon 연결 문자열 (Neon 연결 시 자동) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 토큰 (Blob 연결 시 자동) |
 | `SESSION_SECRET` | `openssl rand -base64 32` |
 
 ## 스택
 
-Next.js 16 (App Router, Server Actions), React 19, Tailwind CSS v4, shadcn/ui, Supabase, Vercel
+Next.js 16 (App Router, Server Actions), React 19, Tailwind CSS v4, shadcn/ui, Neon (Postgres), Vercel Blob, Vercel
 
 ## 구조
 
@@ -54,15 +54,17 @@ src/
 │   ├── match/            # 매치 카드, 게이지, 세팅 시트, 결과(투표/스크린샷)
 │   ├── calendar/         # 달력, 일정 등록 바텀 시트
 │   └── icons/            # [라인] 닉네임 [티어] 표시
-├── lib/                  # DB, Storage, 세션, PIN 해시, 상수, 목업 DB
+├── lib/
+│   ├── repo/             # DB 접근 (postgres.ts = Neon, memory.ts = 목업)
+│   └── ...               # 세션, PIN 해시, 스크린샷 저장소, 상수
 └── proxy.ts              # 로그인 후 원래 경로로 복귀
-supabase/schema.sql       # DB 스키마 + 스크린샷 Storage 버킷
+db/schema.sql             # DB 스키마 (Postgres)
 public/icons/             # 라인/티어 아이콘 (같은 파일명으로 교체 가능)
 ```
 
 ## 보안 메모
 
-- 브라우저는 DB에 직접 접근하지 않습니다. 모든 데이터는 서버에서 service_role 키로 처리합니다.
-- 모든 테이블에 RLS를 켜고 정책은 만들지 않았습니다. 그래서 anon 키로는 아무것도 읽을 수 없습니다.
+- 브라우저는 DB에 직접 접근하지 않습니다. 모든 읽기와 쓰기는 서버에서 처리하고, 권한도 서버에서 확인합니다.
+- 스크린샷은 비공개 Blob에 저장하고, 로그인한 멤버에게만 보여줍니다.
 - PIN은 scrypt로 해시해서 저장합니다. 5번 틀리면 5분 동안 잠깁니다.
 - 가입 링크는 누구나 쓸 수 있습니다. 모르는 멤버가 생기면 관리 탭에서 삭제하세요.

@@ -2,19 +2,16 @@ import "server-only";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { db } from "./supabase";
+import { repo } from "./repo";
 import { readSessionUserId } from "./session";
 import type { PublicUser } from "./types";
-
-export const PUBLIC_USER_COLUMNS = "id, nickname, tier, tier_division, preferred_lanes, is_admin";
 
 /** 요청당 1번만 조회되도록 cache */
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   const userId = await readSessionUserId();
   if (!userId) return null;
 
-  const { data } = await db().from("users").select(PUBLIC_USER_COLUMNS).eq("id", userId).maybeSingle();
-  return (data as PublicUser | null) ?? null;
+  return repo.findUser(userId);
 });
 
 /** 비로그인이면 /login?next=<현재 경로> 로 보낸다 (경로는 proxy.ts 가 넣어줌) */

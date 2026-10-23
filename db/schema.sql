@@ -1,13 +1,12 @@
 -- =====================================================================
--- 5v5 내전 일정 앱 - Supabase 스키마
--- Supabase Dashboard > SQL Editor 에 통째로 붙여넣고 Run.
+-- 5v5 내전 일정 앱 - Postgres 스키마 (Neon)
+-- Neon Console > SQL Editor 에 통째로 붙여넣고 Run. 여러 번 실행해도 안전하다.
 --
 -- 보안 모델
---   * 브라우저는 Supabase에 직접 접근하지 않는다.
+--   * 브라우저는 DB에 직접 접근하지 않는다.
 --   * 모든 읽기/쓰기는 Next.js 서버(Server Component / Server Action)가
---     service_role 키로 수행하고, 권한 체크(본인/관리자)는 서버 코드에서 한다.
---   * 따라서 모든 테이블에 RLS를 켜고 정책을 만들지 않는다
---     → anon / authenticated 키로는 아무것도 읽거나 쓸 수 없다.
+--     DATABASE_URL 로 수행하고, 권한 체크(본인/관리자)는 서버 코드에서 한다.
+--   * 스크린샷 파일은 DB가 아닌 Vercel Blob(비공개)에 저장하고 경로만 기록한다.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -50,7 +49,7 @@ create table if not exists public.users (
   updated_at          timestamptz not null default now(),
 
   -- 디비전이 있는 티어(아이언~다이아)는 필수, 없는 티어는 null
-  constraint users_tier_division_check check (
+  constraint users_tier_division_required check (
     (tier in ('unranked', 'master', 'grandmaster', 'challenger')) = (tier_division is null)
   )
 );
@@ -135,7 +134,7 @@ create trigger match_votes_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------
--- match_screenshots : 매치 결과 스크린샷 (파일은 Storage 'match-screenshots' 버킷)
+-- match_screenshots : 매치 결과 스크린샷 (파일은 Vercel Blob, 여기엔 경로만)
 -- ---------------------------------------------------------------------
 create table if not exists public.match_screenshots (
   id            uuid primary key default gen_random_uuid(),
@@ -147,20 +146,6 @@ create table if not exists public.match_screenshots (
 
 create index if not exists match_screenshots_play_date_idx
   on public.match_screenshots (play_date);
-
--- 비공개 버킷 (서버가 signed URL 을 발급해서 보여줌). 5MB, 이미지만
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('match-screenshots', 'match-screenshots', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do nothing;
-
--- ---------------------------------------------------------------------
--- RLS : 켜기만 하고 정책은 만들지 않음 (service_role 만 접근 가능)
--- ---------------------------------------------------------------------
-alter table public.users             enable row level security;
-alter table public.schedules         enable row level security;
-alter table public.match_settings    enable row level security;
-alter table public.match_votes       enable row level security;
-alter table public.match_screenshots enable row level security;
 
 -- ---------------------------------------------------------------------
 -- 운영 팁

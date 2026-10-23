@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/supabase";
+import { repo } from "@/lib/repo";
 import { canEdit, requireUser } from "@/lib/auth";
 import { isLane, type Lane } from "@/lib/constants";
 import { isValidDate, todayKST } from "@/lib/date";
@@ -33,18 +33,12 @@ export async function saveSchedule(input: {
   if (input.status !== "join" && input.status !== "decline") return { ok: false, error: "참여 여부를 선택해 주세요." };
   if (input.status === "join" && !isLane(input.lane)) return { ok: false, error: "플레이할 라인을 1개 선택해 주세요." };
 
-  const { error } = await db()
-    .from("schedules")
-    .upsert(
-      {
-        user_id: userId,
-        play_date: input.date,
-        status: input.status,
-        lane: input.status === "join" ? input.lane : null,
-      },
-      { onConflict: "user_id,play_date" },
-    );
-  if (error) return { ok: false, error: "저장에 실패했어요." };
+  await repo.upsertSchedule({
+    user_id: userId,
+    play_date: input.date,
+    status: input.status,
+    lane: input.status === "join" ? input.lane : null,
+  });
 
   revalidate();
   return { ok: true };
@@ -58,8 +52,7 @@ export async function deleteSchedule(input: { date: string; targetUserId?: strin
   if (!canEdit(me, userId)) return { ok: false, error: "다른 멤버의 일정은 관리자만 삭제할 수 있어요." };
   if (!isValidDate(input.date)) return { ok: false, error: "날짜가 올바르지 않아요." };
 
-  const { error } = await db().from("schedules").delete().eq("user_id", userId).eq("play_date", input.date);
-  if (error) return { ok: false, error: "삭제에 실패했어요." };
+  await repo.deleteSchedule(userId, input.date);
 
   revalidate();
   return { ok: true };

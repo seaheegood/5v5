@@ -1,0 +1,228 @@
+import "server-only";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import type { PublicUser, Schedule } from "../types";
+import { DuplicateNicknameError, type Repo, type ScreenshotRow, type SettingsRow, type VoteRow } from "./types";
+
+/**
+ * Neon(Postgres) 구현. HTTP 드라이버라 서버리스(Vercel Functions)에서 커넥션 관리가 필요 없다.
+ * date/timestamp 는 드라이버가 JS Date 로 바꾸지 않도록 SQL 에서 ::text 로 받는다.
+ */
+let client: NeonQueryFunction<false, false> | null = null;
+
+function neonClient(): NeonQueryFunction<false, false> {
+  if (client) return client;
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL 환경변수가 필요합니다.");
+  return (client = neon(url));
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** 클라이언트에서 온 id 가 uuid 형식이 아니면 Postgres 가 에러를 내므로 미리 걸러낸다 */
+const isUuid = (id: string) => UUID_RE.test(id);
+
+const isUniqueViolation = (e: unknown) => (e as { code?: string })?.code === "23505";
+
+const byNickname = (a: PublicUser, b: PublicUser) => a.nickname.localeCompare(b.nickname, "ko");
+
+type ScheduleJoinRow = Omit<Schedule, "user"> & Pick<PublicUser, "nickname" | "tier" | "tier_division">;
+
+/** sql 클라이언트를 주입받는 형태 (기본은 Neon, 테스트에서는 다른 Postgres 로 교체 가능) */
+export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): Repo {
+  return {
+    // ── users ─────────────────────────────
+    async listUsers() {
+      const rows = await sql()`
+        select id, nickname, tier, tier_division, preferred_lanes, is_admin from users`;
+      return (rows as PublicUser[]).sort(byNickname);
+    },
+
+    async findUser(id) {
+      if (!isUuid(id)) return null;
+      const rows = await sql()`
+        select id, nickname, tier, tier_division, preferred_lanes, is_admin from users where id = ${id}`;
+      return (rows[0] as PublicUser | undefined) ?? null;
+    },
+
+    async findAuth(id) {
+      if (!isUuid(id)) return null;
+      const rows = await sql()`
+        select id, pin_hash, failed_pin_attempts, locked_until::text from users where id = ${id}`;
+      return (rows[0] as Awaited<ReturnType<Repo["findAuth"]>>) ?? null;
+    },
+
+    async setLoginState(id, state) {
+      await sql()`
+        update users
+        set failed_pin_attempts = ${state.failed_pin_attempts}, locked_until = ${state.locked_until}
+        where id = ${id}`;
+    },
+
+    async countUsers() {
+      const rows = await sql()`select count(*)::int as count from users`;
+      return rows[0].count as number;
+    },
+
+    async createUser(input) {
+      try {
+        const rows = await sql()`
+          insert into users (nickname, pin_hash, tier, tier_division, preferred_lanes, is_admin)
+          values (${input.nickname}, ${input.pin_hash}, ${input.tier}, ${input.tier_division},
+                  ${input.preferred_lanes}::text[], ${input.is_admin})
+          returning id`;
+        return rows[0].id as string;
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new DuplicateNicknameError();
+        throw e;
+      }
+    },
+
+    async updateUser(id, patch) {
+      try {
+        // nickname / is_admin 은 넘어온 경우에만 변경 (coalesce)
+        await sql()`
+          update users set
+            tier = ${patch.tier},
+            tier_division = ${patch.tier_division},
+            preferred_lanes = ${patch.preferred_lanes}::text[],
+            nickname = coalesce(${patch.nickname ?? null}, nickname),
+            is_admin = coalesce(${patch.is_admin ?? null}::boolean, is_admin)
+          where id = ${id}`;
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new DuplicateNicknameError();
+        throw e;
+      }
+    },
+
+    async setPinHash(id, pinHash) {
+      await sql()`
+        update users set pin_hash = ${pinHash}, failed_pin_attempts = 0, locked_until = null where id = ${id}`;
+    },
+
+    async deleteUser(id) {
+      await sql()`delete from users where id = ${id}`;
+    },
+
+    // ── schedules ─────────────────────────
+    async listSchedules({ from, to }) {
+      const rows = (await sql()`
+        select s.id, s.user_id, s.play_date::text, s.status, s.lane, u.nickname, u.tier, u.tier_division
+        from schedules s
+        join users u on u.id = s.user_id
+        where (${from ?? null}::date is null or s.play_date >= ${from ?? null}::date)
+          and (${to ?? null}::date is null or s.play_date <= ${to ?? null}::date)
+        order by s.play_date`) as ScheduleJoinRow[];
+
+      return rows.map(({ nickname, tier, tier_division, ...s }) => ({
+        ...s,
+        user: { id: s.user_id, nickname, tier, tier_division },
+      }));
+    },
+
+    async upsertSchedule(input) {
+      await sql()`
+        insert into schedules (user_id, play_date, status, lane)
+        values (${input.user_id}, ${input.play_date}, ${input.status}, ${input.lane})
+        on conflict (user_id, play_date)
+        do update set status = excluded.status, lane = excluded.lane`;
+    },
+
+    async deleteSchedule(userId, date) {
+      await sql()`delete from schedules where user_id = ${userId} and play_date = ${date}`;
+    },
+
+    async participantIds(date) {
+      const rows = await sql()`
+        select user_id from schedules where play_date = ${date} and status = 'join'`;
+      return rows.map((r) => r.user_id as string);
+    },
+
+    // ── match settings ────────────────────
+    async listSettings(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select m.play_date::text, m.match_format, m.stake, m.updated_at::text, u.nickname as updater_nickname
+        from match_settings m
+        left join users u on u.id = m.updated_by
+        where m.play_date = any(${dates}::date[])`) as SettingsRow[];
+    },
+
+    async upsertSettings(input) {
+      await sql()`
+        insert into match_settings (play_date, match_format, stake, updated_by)
+        values (${input.play_date}, ${input.match_format}, ${input.stake}, ${input.updated_by})
+        on conflict (play_date)
+        do update set match_format = excluded.match_format, stake = excluded.stake, updated_by = excluded.updated_by`;
+    },
+
+    async deleteMatch(date) {
+      const db = sql();
+      const [shots] = await db.transaction([
+        db`delete from match_screenshots where play_date = ${date} returning storage_path`,
+        db`delete from match_votes where play_date = ${date}`,
+        db`delete from match_settings where play_date = ${date}`,
+        db`delete from schedules where play_date = ${date}`,
+      ]);
+      return (shots as { storage_path: string }[]).map((s) => s.storage_path);
+    },
+
+    // ── votes ─────────────────────────────
+    async listVotes(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select play_date::text, voter_id, kind, target_id
+        from match_votes
+        where play_date = any(${dates}::date[])`) as VoteRow[];
+    },
+
+    async upsertVote(input) {
+      await sql()`
+        insert into match_votes (play_date, voter_id, kind, target_id)
+        values (${input.play_date}, ${input.voter_id}, ${input.kind}, ${input.target_id})
+        on conflict (play_date, voter_id, kind)
+        do update set target_id = excluded.target_id`;
+    },
+
+    async deleteVote(date, voterId, kind) {
+      await sql()`
+        delete from match_votes where play_date = ${date} and voter_id = ${voterId} and kind = ${kind}`;
+    },
+
+    // ── screenshots ───────────────────────
+    async listScreenshots(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select s.id, s.play_date::text, s.storage_path, s.uploader_id, u.nickname as uploader_nickname
+        from match_screenshots s
+        left join users u on u.id = s.uploader_id
+        where s.play_date = any(${dates}::date[])
+        order by s.created_at`) as ScreenshotRow[];
+    },
+
+    async countScreenshots(date) {
+      const rows = await sql()`select count(*)::int as count from match_screenshots where play_date = ${date}`;
+      return rows[0].count as number;
+    },
+
+    async insertScreenshot(input) {
+      await sql()`
+        insert into match_screenshots (play_date, storage_path, uploader_id)
+        values (${input.play_date}, ${input.storage_path}, ${input.uploader_id})`;
+    },
+
+    async findScreenshot(id) {
+      if (!isUuid(id)) return null;
+      const rows = await sql()`
+        select s.id, s.play_date::text, s.storage_path, s.uploader_id, u.nickname as uploader_nickname
+        from match_screenshots s
+        left join users u on u.id = s.uploader_id
+        where s.id = ${id}`;
+      return (rows[0] as ScreenshotRow | undefined) ?? null;
+    },
+
+    async deleteScreenshot(id) {
+      await sql()`delete from match_screenshots where id = ${id}`;
+    },
+  };
+}
+
+export const postgresRepo = createPostgresRepo(neonClient);

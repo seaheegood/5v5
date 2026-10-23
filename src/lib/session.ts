@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { MOCK_DB } from "./supabase";
+import { MOCK_DB } from "./repo";
 
 const COOKIE_NAME = "5v5_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30일 (지인용 앱이라 길게)

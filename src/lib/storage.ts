@@ -1,23 +1,22 @@
 import "server-only";
-import { db, MOCK_DB } from "./supabase";
+import { del, get, put } from "@vercel/blob";
+import { MOCK_DB } from "./repo";
 
 /**
- * 매치 스크린샷 저장소. 실제로는 Supabase Storage 비공개 버킷,
- * 목업 모드에서는 메모리에 data URL 로 보관한다.
+ * 매치 스크린샷 파일 저장소.
+ * - 실제: Vercel Blob 비공개(private) 스토어. 보기는 /api/screenshots/[id] 가 로그인 확인 후 스트리밍
+ * - 목업: 메모리
+ * BLOB_READ_WRITE_TOKEN 은 Vercel 에서 Blob 스토어를 프로젝트에 연결하면 자동으로 들어간다.
  */
-const BUCKET = "match-screenshots";
-const SIGNED_URL_SECONDS = 60 * 60;
+const mockFiles = ((globalThis as unknown as { __5v5MockFiles?: Map<string, { body: Buffer; type: string }> })
+  .__5v5MockFiles ??= new Map());
 
-const mockFiles = ((globalThis as unknown as { __5v5MockFiles?: Map<string, string> }).__5v5MockFiles ??= new Map());
-
-export async function uploadImage(path: string, file: File): Promise<boolean> {
+export async function uploadImage(path: string, file: File): Promise<void> {
   if (MOCK_DB) {
-    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-    mockFiles.set(path, `data:${file.type};base64,${base64}`);
-    return true;
+    mockFiles.set(path, { body: Buffer.from(await file.arrayBuffer()), type: file.type });
+    return;
   }
-  const { error } = await db().storage.from(BUCKET).upload(path, file, { contentType: file.type });
-  return !error;
+  await put(path, file, { access: "private", contentType: file.type });
 }
 
 export async function removeImages(paths: string[]): Promise<void> {
@@ -26,16 +25,15 @@ export async function removeImages(paths: string[]): Promise<void> {
     for (const path of paths) mockFiles.delete(path);
     return;
   }
-  await db().storage.from(BUCKET).remove(paths);
+  await del(paths);
 }
 
-/** path → 보기용 URL */
-export async function getImageUrls(paths: string[]): Promise<Record<string, string>> {
-  if (paths.length === 0) return {};
-  if (MOCK_DB) return Object.fromEntries(paths.map((p) => [p, mockFiles.get(p) ?? ""]));
-
-  const { data } = await db().storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS);
-  const urls: Record<string, string> = {};
-  for (const d of data ?? []) if (d.path && d.signedUrl) urls[d.path] = d.signedUrl;
-  return urls;
+export async function readImage(path: string): Promise<{ body: BodyInit; type: string } | null> {
+  if (MOCK_DB) {
+    const file = mockFiles.get(path);
+    return file ? { body: new Uint8Array(file.body), type: file.type } : null;
+  }
+  const result = await get(path, { access: "private" });
+  if (!result || result.statusCode !== 200) return null;
+  return { body: result.stream, type: result.blob.contentType };
 }

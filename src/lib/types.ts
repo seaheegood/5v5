@@ -41,7 +41,7 @@ export type VoteKind = "mvp" | "blame";
 
 export type Screenshot = {
   id: string;
-  /** 서버가 발급한 signed URL (1시간 유효) */
+  /** 로그인 확인 후 파일을 내려주는 /api/screenshots/[id] 경로 */
   url: string;
   uploaderId: string | null;
   uploaderNickname: string | null;

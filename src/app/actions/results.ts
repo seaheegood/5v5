@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/supabase";
+import { repo } from "@/lib/repo";
 import { requireUser } from "@/lib/auth";
 import { MAX_SCREENSHOTS } from "@/lib/constants";
 import { isValidDate, todayKST } from "@/lib/date";
@@ -17,11 +17,6 @@ function revalidate() {
   revalidatePath("/history");
 }
 
-async function participantIds(date: string): Promise<Set<string>> {
-  const { data } = await db().from("schedules").select("user_id").eq("play_date", date).eq("status", "join");
-  return new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
-}
-
 /**
  * MVP / 범인 투표. 그날 참여자만, 참여자에게만, 본인 제외, 종류별 1표.
  * targetId 가 null 이면 내 표 취소.
@@ -31,21 +26,15 @@ export async function castVote(input: { date: string; kind: VoteKind; targetId: 
   if (!isValidDate(input.date) || input.date > todayKST()) return { ok: false, error: "경기 당일부터 투표할 수 있어요." };
   if (input.kind !== "mvp" && input.kind !== "blame") return { ok: false, error: "잘못된 투표예요." };
 
-  const members = await participantIds(input.date);
+  const members = new Set(await repo.participantIds(input.date));
   if (!members.has(me.id)) return { ok: false, error: "참여자만 투표할 수 있어요." };
 
-  const votes = db().from("match_votes");
   if (input.targetId === null) {
-    const { error } = await votes.delete().eq("play_date", input.date).eq("voter_id", me.id).eq("kind", input.kind);
-    if (error) return { ok: false, error: "취소에 실패했어요." };
+    await repo.deleteVote(input.date, me.id, input.kind);
   } else {
     if (input.targetId === me.id) return { ok: false, error: "본인에게는 투표할 수 없어요." };
     if (!members.has(input.targetId)) return { ok: false, error: "참여자에게만 투표할 수 있어요." };
-    const { error } = await votes.upsert(
-      { play_date: input.date, voter_id: me.id, kind: input.kind, target_id: input.targetId },
-      { onConflict: "play_date,voter_id,kind" },
-    );
-    if (error) return { ok: false, error: "투표에 실패했어요." };
+    await repo.upsertVote({ play_date: input.date, voter_id: me.id, kind: input.kind, target_id: input.targetId });
   }
 
   revalidate();
@@ -62,19 +51,21 @@ export async function uploadScreenshot(formData: FormData): Promise<ActionResult
   if (!(file instanceof File) || !IMAGE_TYPES[file.type]) return { ok: false, error: "jpg, png, webp 이미지만 올릴 수 있어요." };
   if (file.size > MAX_BYTES) return { ok: false, error: "4MB 이하 이미지만 올릴 수 있어요." };
 
-  const { count } = await db()
-    .from("match_screenshots")
-    .select("id", { count: "exact", head: true })
-    .eq("play_date", date);
-  if ((count ?? 0) >= MAX_SCREENSHOTS) return { ok: false, error: `매치당 ${MAX_SCREENSHOTS}장까지예요.` };
+  if ((await repo.countScreenshots(date)) >= MAX_SCREENSHOTS) {
+    return { ok: false, error: `매치당 ${MAX_SCREENSHOTS}장까지예요.` };
+  }
 
-  const path = `${date}/${randomUUID()}.${IMAGE_TYPES[file.type]}`;
-  if (!(await uploadImage(path, file))) return { ok: false, error: "업로드에 실패했어요." };
-
-  const { error } = await db().from("match_screenshots").insert({ play_date: date, storage_path: path, uploader_id: me.id });
-  if (error) {
-    await removeImages([path]);
+  const path = `screenshots/${date}/${randomUUID()}.${IMAGE_TYPES[file.type]}`;
+  try {
+    await uploadImage(path, file);
+  } catch {
     return { ok: false, error: "업로드에 실패했어요." };
+  }
+  try {
+    await repo.insertScreenshot({ play_date: date, storage_path: path, uploader_id: me.id });
+  } catch (e) {
+    await removeImages([path]); // DB 기록 실패 시 고아 파일 정리
+    throw e;
   }
 
   revalidate();
@@ -84,13 +75,12 @@ export async function uploadScreenshot(formData: FormData): Promise<ActionResult
 /** 스크린샷 삭제 (올린 사람 or 관리자) */
 export async function deleteScreenshot(id: string): Promise<ActionResult> {
   const me = await requireUser();
-  const { data } = await db().from("match_screenshots").select("storage_path, uploader_id").eq("id", id).maybeSingle();
-  if (!data) return { ok: false, error: "이미 삭제됐어요." };
-  if (data.uploader_id !== me.id && !me.is_admin) return { ok: false, error: "올린 사람이나 관리자만 삭제할 수 있어요." };
+  const shot = await repo.findScreenshot(id);
+  if (!shot) return { ok: false, error: "이미 삭제됐어요." };
+  if (shot.uploader_id !== me.id && !me.is_admin) return { ok: false, error: "올린 사람이나 관리자만 삭제할 수 있어요." };
 
-  const { error } = await db().from("match_screenshots").delete().eq("id", id);
-  if (error) return { ok: false, error: "삭제에 실패했어요." };
-  await removeImages([data.storage_path]);
+  await repo.deleteScreenshot(id);
+  await removeImages([shot.storage_path]);
 
   revalidate();
   return { ok: true };
