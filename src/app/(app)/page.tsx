@@ -10,7 +10,7 @@ import { formatKoreanDate } from "@/lib/date";
 /** 메인: 오늘 이후 매치 카드만. 지난 매치는 /history */
 export default async function HomePage() {
   const me = await requireUser();
-  const { cards, pending } = await getMatchCards("upcoming");
+  const { cards, pending } = await getMatchCards("upcoming", me.id);
 
   return (
     <div className="flex flex-col gap-5">

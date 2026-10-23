@@ -7,7 +7,7 @@ import { getMatchCards } from "@/lib/data";
 /** 지난 매치 (최근 순, 보기 전용) */
 export default async function HistoryPage() {
   const me = await requireUser();
-  const { cards } = await getMatchCards("past");
+  const { cards } = await getMatchCards("past", me.id);
 
   return (
     <div className="flex flex-col gap-5">

@@ -12,11 +12,21 @@ import { hashPin } from "./pin";
  */
 
 type Row = Record<string, unknown>;
-type Tables = Record<"users" | "schedules" | "match_settings", Row[]>;
+type Tables = Record<"users" | "schedules" | "match_settings" | "match_votes" | "match_screenshots", Row[]>;
 
 // 임베드 조인(alias:users(...))에 쓰는 FK 컬럼
-const FOREIGN_KEYS: Record<string, string> = { "schedules.users": "user_id", "match_settings.users": "updated_by" };
-const PRIMARY_KEY: Record<string, string> = { users: "id", schedules: "id", match_settings: "play_date" };
+const FOREIGN_KEYS: Record<string, string> = {
+  "schedules.users": "user_id",
+  "match_settings.users": "updated_by",
+  "match_screenshots.users": "uploader_id",
+};
+const PRIMARY_KEY: Record<string, string> = {
+  users: "id",
+  schedules: "id",
+  match_settings: "play_date",
+  match_votes: "play_date,voter_id,kind",
+  match_screenshots: "id",
+};
 
 function seed(): Tables {
   const now = new Date().toISOString();
@@ -67,6 +77,7 @@ function seed(): Tables {
     [0, "mid"], [3, "adc"], [7, "adc"], [4, "support"], [8, "support"],
   ];
   add(-7, ten); // 지난 매치
+  add(0, ten.slice(0, 6)); // 오늘 매치 (결과 투표/스크린샷 확인용)
   add(1, [[0, "top"], [1, "jungle"], [2, "mid"], [3, "adc"], [4, "support"], [5, "top"], [6, "jungle"], [7, "adc"], [9, null]]);
   add(2, [[1, "jungle"], [2, "mid"], [8, "support"]]);
   add(8, ten);
@@ -76,7 +87,21 @@ function seed(): Tables {
     { play_date: addDays(today, 1), match_format: "3판 2선승제", stake: "진 팀이 치킨 쏘기", updated_by: users[1].id, created_at: now, updated_at: now },
   ];
 
-  return { users, schedules, match_settings };
+  // 지난 매치 투표 (MVP: 박아리 3표 / 범인: 강룰루 2표 ...)
+  const vote = (voter: number, kind: string, target: number) => ({
+    play_date: addDays(today, -7),
+    voter_id: users[voter].id,
+    kind,
+    target_id: users[target].id,
+    created_at: now,
+    updated_at: now,
+  });
+  const match_votes: Row[] = [
+    vote(0, "mvp", 2), vote(1, "mvp", 2), vote(5, "mvp", 2), vote(3, "mvp", 10), vote(4, "mvp", 10),
+    vote(0, "blame", 8), vote(1, "blame", 8), vote(2, "blame", 6),
+  ];
+
+  return { users, schedules, match_settings, match_votes, match_screenshots: [] };
 }
 
 const store = globalThis as unknown as { __5v5MockDb?: Tables };
@@ -257,11 +282,13 @@ class Query implements PromiseLike<Result> {
       case "delete": {
         affected = rows.filter(this.matches);
         tables()[this.table] = rows.filter((r) => !affected.includes(r));
-        // FK 동작 흉내: users 삭제 시 schedules cascade, match_settings.updated_by set null
+        // FK 동작 흉내: users 삭제 시 schedules/votes cascade, 설정 수정자/업로더 set null
         if (this.table === "users") {
           const ids = new Set(affected.map((u) => u.id));
           tables().schedules = tables().schedules.filter((s) => !ids.has(s.user_id));
+          tables().match_votes = tables().match_votes.filter((v) => !ids.has(v.voter_id) && !ids.has(v.target_id));
           for (const m of tables().match_settings) if (ids.has(m.updated_by)) m.updated_by = null;
+          for (const m of tables().match_screenshots) if (ids.has(m.uploader_id)) m.uploader_id = null;
         }
         break;
       }

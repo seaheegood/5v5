@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { PlayerRow } from "../icons/player-row";
 import { Button } from "../ui/button";
 import { LaneCoverage } from "./lane-coverage";
+import { MatchResults } from "./match-results";
 import { MatchSettingsSheet } from "./match-settings-sheet";
 import { ProgressGauge } from "./progress-gauge";
 
@@ -114,6 +115,9 @@ export function MatchCard({
           </div>
         )}
       </section>
+
+      {/* 결과: 투표 + 스크린샷 (경기 당일부터) */}
+      {card.results && <MatchResults date={card.date} participants={card.participants} results={card.results} me={me} />}
 
       {/* 액션 */}
       {(!past || me.isAdmin) && (

@@ -39,7 +39,9 @@ npm install
    - Region: **Northeast Asia (Seoul)** 권장
    - DB 비밀번호는 아무거나 (앱에서는 쓰지 않음)
 2. 왼쪽 메뉴 **SQL Editor** → New query → `supabase/schema.sql` 내용 전체 붙여넣기 → **Run**
-3. **Table Editor**에서 `users`, `schedules`, `match_settings` 3개 테이블이 생겼는지 확인
+3. 테이블과 버킷이 생겼는지 확인
+   - **Table Editor**: `users`, `schedules`, `match_settings`, `match_votes`, `match_screenshots` 5개 테이블
+   - **Storage**: `match-screenshots` 버킷 (비공개)
 4. **Project Settings → API** (또는 *API Keys*)에서 두 값 복사
    - `Project URL` → `SUPABASE_URL`
    - `service_role` (secret) 키 → `SUPABASE_SERVICE_ROLE_KEY`

@@ -59,6 +59,10 @@ export const MATCH_FULL = 10;
 /** 라인별 필요 인원 (양 팀 1명씩) */
 export const PER_LANE = 2;
 
+export const VOTE_LABEL = { mvp: "MVP", blame: "범인" } as const;
+/** 매치당 스크린샷 최대 개수 */
+export const MAX_SCREENSHOTS = 10;
+
 export const MATCH_FORMAT_PRESETS = ["단판", "3판 2선승제", "5판 3선승제", "칼바람 내전"];
 export const STAKE_PRESETS = ["진 팀이 치킨 쏘기", "진 팀이 피자 쏘기", "커피 내기", "명예만 걸기"];
 

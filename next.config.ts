@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 서버 액션에서 Supabase service role 키를 사용하므로 별도 설정 불필요.
-  // 라인/티어 아이콘은 /public 정적 파일을 <img>로 사용 (외부 CDN 미사용).
+  experimental: {
+    // 스크린샷 업로드용 (클라이언트에서 압축 후 전송, 서버에서 4MB 제한)
+    serverActions: { bodySizeLimit: "5mb" },
+  },
 };
 
 export default nextConfig;

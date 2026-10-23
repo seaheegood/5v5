@@ -114,11 +114,53 @@ create trigger match_settings_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------
+-- match_votes : 매치 투표 (MVP / 범인). 참여자 1명당 종류별 1표, 본인 제외
+--   - 누가 누구에게 투표했는지는 화면에 노출하지 않고 집계만 보여준다
+-- ---------------------------------------------------------------------
+create table if not exists public.match_votes (
+  play_date   date not null,
+  voter_id    uuid not null references public.users (id) on delete cascade,
+  kind        text not null check (kind in ('mvp', 'blame')),
+  target_id   uuid not null references public.users (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+
+  primary key (play_date, voter_id, kind),
+  constraint match_votes_not_self check (voter_id <> target_id)
+);
+
+drop trigger if exists match_votes_set_updated_at on public.match_votes;
+create trigger match_votes_set_updated_at
+  before update on public.match_votes
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- match_screenshots : 매치 결과 스크린샷 (파일은 Storage 'match-screenshots' 버킷)
+-- ---------------------------------------------------------------------
+create table if not exists public.match_screenshots (
+  id            uuid primary key default gen_random_uuid(),
+  play_date     date not null,
+  storage_path  text not null unique,
+  uploader_id   uuid references public.users (id) on delete set null,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists match_screenshots_play_date_idx
+  on public.match_screenshots (play_date);
+
+-- 비공개 버킷 (서버가 signed URL 을 발급해서 보여줌). 5MB, 이미지만
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('match-screenshots', 'match-screenshots', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------
 -- RLS : 켜기만 하고 정책은 만들지 않음 (service_role 만 접근 가능)
 -- ---------------------------------------------------------------------
-alter table public.users          enable row level security;
-alter table public.schedules      enable row level security;
-alter table public.match_settings enable row level security;
+alter table public.users             enable row level security;
+alter table public.schedules         enable row level security;
+alter table public.match_settings    enable row level security;
+alter table public.match_votes       enable row level security;
+alter table public.match_screenshots enable row level security;
 
 -- ---------------------------------------------------------------------
 -- 운영 팁
