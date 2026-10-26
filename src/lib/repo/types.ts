@@ -1,5 +1,5 @@
 import type { Division, Lane, Tier } from "../constants";
-import type { PublicUser, Schedule, ScheduleStatus, VoteKind } from "../types";
+import type { PublicUser, Schedule, ScheduleStatus, Team, VoteKind } from "../types";
 
 /** 닉네임 중복 (대소문자 무시 유일 제약 위반) */
 export class DuplicateNicknameError extends Error {
@@ -22,6 +22,7 @@ export type NewUser = {
   tier_division: Division | null;
   preferred_lanes: Lane[];
   is_admin: boolean;
+  must_change_pin: boolean;
 };
 
 export type UserPatch = {
@@ -43,6 +44,18 @@ export type SettingsRow = {
 };
 
 export type VoteRow = { play_date: string; voter_id: string; kind: VoteKind; target_id: string };
+
+export type ResultRow = { play_date: string; winner: Team };
+export type PlayerRow = { play_date: string; user_id: string; team: Team };
+
+export type CommentRow = {
+  id: string;
+  play_date: string;
+  user_id: string | null;
+  nickname: string | null;
+  body: string;
+  created_at: string;
+};
 
 export type ScreenshotRow = {
   id: string;
@@ -67,8 +80,8 @@ export interface Repo {
   createUser(input: NewUser): Promise<string>;
   /** @throws DuplicateNicknameError */
   updateUser(id: string, patch: UserPatch): Promise<void>;
-  /** PIN 변경 + 잠금 해제 */
-  setPinHash(id: string, pinHash: string): Promise<void>;
+  /** PIN 변경 + 잠금 해제. mustChange 면 다음 로그인 때 재설정 강제 */
+  setPinHash(id: string, pinHash: string, mustChange: boolean): Promise<void>;
   /** 일정/투표는 cascade, 설정 수정자/스크린샷 업로더는 null */
   deleteUser(id: string): Promise<void>;
 
@@ -81,13 +94,27 @@ export interface Repo {
   // ── match settings ────────────────────
   listSettings(dates: string[]): Promise<SettingsRow[]>;
   upsertSettings(input: { play_date: string; match_format: string; stake: string; updated_by: string }): Promise<void>;
-  /** 그날의 응답/설정/투표/스크린샷 전부 삭제. 삭제된 스크린샷 파일 경로를 돌려준다 */
+  /** 그날의 응답/설정/결과/투표/댓글/스크린샷 전부 삭제. 삭제된 스크린샷 파일 경로를 돌려준다 */
   deleteMatch(date: string): Promise<string[]>;
+
+  // ── results (종료) ────────────────────
+  listResults(dates: string[]): Promise<ResultRow[]>;
+  listPlayers(dates: string[]): Promise<PlayerRow[]>;
+  /** 종료 처리: 결과 + 팀 배정을 한 번에 기록 */
+  finishMatch(input: { play_date: string; winner: Team; finished_by: string; players: { user_id: string; team: Team }[] }): Promise<void>;
+  /** 종료 취소: 결과/팀/투표 삭제 (댓글/스크린샷은 유지) */
+  reopenMatch(date: string): Promise<void>;
 
   // ── votes ─────────────────────────────
   listVotes(dates: string[]): Promise<VoteRow[]>;
   upsertVote(input: VoteRow): Promise<void>;
   deleteVote(date: string, voterId: string, kind: VoteKind): Promise<void>;
+
+  // ── comments ──────────────────────────
+  listComments(dates: string[]): Promise<CommentRow[]>;
+  insertComment(input: { play_date: string; user_id: string; body: string }): Promise<void>;
+  findComment(id: string): Promise<CommentRow | null>;
+  deleteComment(id: string): Promise<void>;
 
   // ── screenshots ───────────────────────
   listScreenshots(dates: string[]): Promise<ScreenshotRow[]>;

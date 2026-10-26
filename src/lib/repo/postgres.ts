@@ -1,7 +1,16 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { PublicUser, Schedule } from "../types";
-import { DuplicateNicknameError, type Repo, type ScreenshotRow, type SettingsRow, type VoteRow } from "./types";
+import {
+  DuplicateNicknameError,
+  type CommentRow,
+  type PlayerRow,
+  type Repo,
+  type ResultRow,
+  type ScreenshotRow,
+  type SettingsRow,
+  type VoteRow,
+} from "./types";
 
 /**
  * Neon(Postgres) 구현. HTTP 드라이버라 서버리스(Vercel Functions)에서 커넥션 관리가 필요 없다.
@@ -32,14 +41,14 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     // ── users ─────────────────────────────
     async listUsers() {
       const rows = await sql()`
-        select id, nickname, tier, tier_division, preferred_lanes, is_admin from users`;
+        select id, nickname, tier, tier_division, preferred_lanes, is_admin, must_change_pin from users`;
       return (rows as PublicUser[]).sort(byNickname);
     },
 
     async findUser(id) {
       if (!isUuid(id)) return null;
       const rows = await sql()`
-        select id, nickname, tier, tier_division, preferred_lanes, is_admin from users where id = ${id}`;
+        select id, nickname, tier, tier_division, preferred_lanes, is_admin, must_change_pin from users where id = ${id}`;
       return (rows[0] as PublicUser | undefined) ?? null;
     },
 
@@ -65,9 +74,9 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async createUser(input) {
       try {
         const rows = await sql()`
-          insert into users (nickname, pin_hash, tier, tier_division, preferred_lanes, is_admin)
+          insert into users (nickname, pin_hash, tier, tier_division, preferred_lanes, is_admin, must_change_pin)
           values (${input.nickname}, ${input.pin_hash}, ${input.tier}, ${input.tier_division},
-                  ${input.preferred_lanes}::text[], ${input.is_admin})
+                  ${input.preferred_lanes}::text[], ${input.is_admin}, ${input.must_change_pin})
           returning id`;
         return rows[0].id as string;
       } catch (e) {
@@ -93,9 +102,11 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
       }
     },
 
-    async setPinHash(id, pinHash) {
+    async setPinHash(id, pinHash, mustChange) {
       await sql()`
-        update users set pin_hash = ${pinHash}, failed_pin_attempts = 0, locked_until = null where id = ${id}`;
+        update users
+        set pin_hash = ${pinHash}, must_change_pin = ${mustChange}, failed_pin_attempts = 0, locked_until = null
+        where id = ${id}`;
     },
 
     async deleteUser(id) {
@@ -158,11 +169,46 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
       const db = sql();
       const [shots] = await db.transaction([
         db`delete from match_screenshots where play_date = ${date} returning storage_path`,
+        db`delete from match_comments where play_date = ${date}`,
         db`delete from match_votes where play_date = ${date}`,
+        db`delete from match_results where play_date = ${date}`, // match_players 는 cascade
         db`delete from match_settings where play_date = ${date}`,
         db`delete from schedules where play_date = ${date}`,
       ]);
       return (shots as { storage_path: string }[]).map((s) => s.storage_path);
+    },
+
+    // ── results (종료) ────────────────────
+    async listResults(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select play_date::text, winner from match_results where play_date = any(${dates}::date[])`) as ResultRow[];
+    },
+
+    async listPlayers(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select play_date::text, user_id, team from match_players where play_date = any(${dates}::date[])`) as PlayerRow[];
+    },
+
+    async finishMatch(input) {
+      const db = sql();
+      await db.transaction([
+        db`insert into match_results (play_date, winner, finished_by)
+           values (${input.play_date}, ${input.winner}, ${input.finished_by})`,
+        db`insert into match_players (play_date, user_id, team)
+           select ${input.play_date}::date, p.user_id, p.team
+           from unnest(${input.players.map((p) => p.user_id)}::uuid[], ${input.players.map((p) => p.team)}::text[])
+             as p(user_id, team)`,
+      ]);
+    },
+
+    async reopenMatch(date) {
+      const db = sql();
+      await db.transaction([
+        db`delete from match_votes where play_date = ${date}`,
+        db`delete from match_results where play_date = ${date}`, // match_players 는 cascade
+      ]);
     },
 
     // ── votes ─────────────────────────────
@@ -185,6 +231,40 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async deleteVote(date, voterId, kind) {
       await sql()`
         delete from match_votes where play_date = ${date} and voter_id = ${voterId} and kind = ${kind}`;
+    },
+
+    // ── comments ──────────────────────────
+    async listComments(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select c.id, c.play_date::text, c.user_id, u.nickname, c.body,
+               to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
+        from match_comments c
+        left join users u on u.id = c.user_id
+        where c.play_date = any(${dates}::date[])
+        order by c.created_at`) as CommentRow[];
+    },
+
+    async insertComment(input) {
+      await sql()`
+        insert into match_comments (play_date, user_id, body)
+        values (${input.play_date}, ${input.user_id}, ${input.body})`;
+    },
+
+    async findComment(id) {
+      if (!isUuid(id)) return null;
+      const rows = await sql()`
+        select c.id, c.play_date::text, c.user_id, u.nickname, c.body,
+               to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
+        from match_comments c
+        left join users u on u.id = c.user_id
+        where c.id = ${id}`;
+      return (rows[0] as CommentRow | undefined) ?? null;
+    },
+
+    async deleteComment(id) {
+      if (!isUuid(id)) return;
+      await sql()`delete from match_comments where id = ${id}`;
     },
 
     // ── screenshots ───────────────────────
@@ -220,6 +300,7 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     },
 
     async deleteScreenshot(id) {
+      if (!isUuid(id)) return;
       await sql()`delete from match_screenshots where id = ${id}`;
     },
   };

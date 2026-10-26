@@ -7,6 +7,8 @@ import { isLane, type Lane } from "@/lib/constants";
 import { isValidDate, todayKST } from "@/lib/date";
 import type { ActionResult, ScheduleStatus } from "@/lib/types";
 
+const isFinished = async (date: string) => (await repo.listResults([date])).length > 0;
+
 function revalidate() {
   revalidatePath("/");
   revalidatePath("/calendar");
@@ -30,6 +32,7 @@ export async function saveSchedule(input: {
   if (!canEdit(me, userId)) return { ok: false, error: "다른 멤버의 일정은 관리자만 수정할 수 있어요." };
   if (!isValidDate(input.date)) return { ok: false, error: "날짜가 올바르지 않아요." };
   if (input.date < todayKST() && !me.is_admin) return { ok: false, error: "지난 날짜는 수정할 수 없어요." };
+  if (!me.is_admin && (await isFinished(input.date))) return { ok: false, error: "종료된 매치는 수정할 수 없어요." };
   if (input.status !== "join" && input.status !== "decline") return { ok: false, error: "참여 여부를 선택해 주세요." };
   if (input.status === "join" && !isLane(input.lane)) return { ok: false, error: "플레이할 라인을 1개 선택해 주세요." };
 
@@ -51,6 +54,7 @@ export async function deleteSchedule(input: { date: string; targetUserId?: strin
 
   if (!canEdit(me, userId)) return { ok: false, error: "다른 멤버의 일정은 관리자만 삭제할 수 있어요." };
   if (!isValidDate(input.date)) return { ok: false, error: "날짜가 올바르지 않아요." };
+  if (!me.is_admin && (await isFinished(input.date))) return { ok: false, error: "종료된 매치는 수정할 수 없어요." };
 
   await repo.deleteSchedule(userId, input.date);
 

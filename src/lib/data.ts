@@ -14,6 +14,11 @@ export function getSchedules(range: { from?: string; to?: string }): Promise<Sch
   return repo.listSchedules(range);
 }
 
+/** 이 날짜들 중 종료된 날짜 */
+export async function getFinishedDates(dates: string[]): Promise<string[]> {
+  return (await repo.listResults(dates)).map((r) => r.play_date);
+}
+
 /**
  * 매치 카드 = 참여자가 MATCH_CARD_MIN 명 이상인 날.
  * - upcoming: 오늘 포함 이후, 날짜 오름차순. 1~4명인 날은 pending 으로 따로 반환
@@ -44,14 +49,8 @@ export async function getMatchCards(
       ? entries.filter(([, list]) => list.length < MATCH_CARD_MIN).map(([date, list]) => ({ date, count: list.length }))
       : [];
 
-  // 결과(투표/스크린샷)는 경기 당일부터
-  const [settings, results] = await Promise.all([
-    repo.listSettings(cardDates),
-    getMatchResults(
-      cardDates.filter((date) => date <= today),
-      meId,
-    ),
-  ]);
+  // 결과(팀/투표/댓글/스크린샷)는 관리자가 종료 처리한 매치만
+  const [settings, results] = await Promise.all([repo.listSettings(cardDates), getMatchResults(cardDates, meId)]);
   const settingsByDate = new Map(settings.map((row) => [row.play_date, row]));
 
   const cards = cardDates.map((date) => {
@@ -74,14 +73,43 @@ export async function getMatchCards(
   return { cards, pending };
 }
 
-/** 날짜별 투표 집계 + 스크린샷. 투표자 정보는 내 표만 남기고 버린다 */
-async function getMatchResults(dates: string[], meId: string): Promise<Map<string, MatchResults>> {
+/** 종료된 날짜만 골라 팀/투표 집계/댓글/스크린샷을 모은다. 투표자 정보는 내 표만 남기고 버린다 */
+async function getMatchResults(candidates: string[], meId: string): Promise<Map<string, MatchResults>> {
   const map = new Map<string, MatchResults>();
+  if (candidates.length === 0) return map;
+
+  const finished = await repo.listResults(candidates);
+  const dates = finished.map((r) => r.play_date);
   if (dates.length === 0) return map;
 
-  for (const date of dates) map.set(date, { tallies: { mvp: {}, blame: {} }, myVotes: {}, screenshots: [] });
+  for (const r of finished)
+    map.set(r.play_date, {
+      winner: r.winner,
+      teams: {},
+      tallies: { mvp: {}, blame: {} },
+      myVotes: {},
+      screenshots: [],
+      comments: [],
+    });
 
-  const [votes, shots] = await Promise.all([repo.listVotes(dates), repo.listScreenshots(dates)]);
+  const [players, votes, comments, shots] = await Promise.all([
+    repo.listPlayers(dates),
+    repo.listVotes(dates),
+    repo.listComments(dates),
+    repo.listScreenshots(dates),
+  ]);
+
+  for (const p of players) map.get(p.play_date)!.teams[p.user_id] = p.team;
+
+  for (const c of comments) {
+    map.get(c.play_date)!.comments.push({
+      id: c.id,
+      userId: c.user_id,
+      nickname: c.nickname,
+      body: c.body,
+      createdAt: c.created_at,
+    });
+  }
 
   for (const v of votes) {
     const result = map.get(v.play_date)!;

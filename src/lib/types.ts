@@ -9,6 +9,8 @@ export type PublicUser = {
   tier_division: Division | null;
   preferred_lanes: Lane[];
   is_admin: boolean;
+  /** true 면 PIN 재설정 전까지 다른 화면 사용 불가 */
+  must_change_pin: boolean;
 };
 
 export type ScheduleStatus = "join" | "decline";
@@ -47,20 +49,36 @@ export type Screenshot = {
   uploaderNickname: string | null;
 };
 
-/** 경기 당일부터 보이는 결과 (투표 집계 + 스크린샷). 누가 누구에게 투표했는지는 내려보내지 않는다 */
+export type Team = "blue" | "red";
+
+export type Comment = {
+  id: string;
+  userId: string | null;
+  nickname: string | null;
+  body: string;
+  createdAt: string;
+};
+
+/**
+ * 관리자가 종료 처리한 매치의 결과. 누가 누구에게 투표했는지는 내려보내지 않는다.
+ */
 export type MatchResults = {
+  winner: Team;
+  /** userId → 팀 (종료 시점 5대5 배정) */
+  teams: Record<string, Team>;
   /** kind → { 대상 userId: 득표수 } */
   tallies: Record<VoteKind, Record<string, number>>;
   /** 내가 투표한 대상 */
   myVotes: Partial<Record<VoteKind, string>>;
   screenshots: Screenshot[];
+  comments: Comment[];
 };
 
 export type MatchCardData = {
   date: string;
   participants: Participant[];
   settings: MatchSettings | null;
-  /** 경기 당일/지난 매치만 존재 */
+  /** 종료된 매치만 존재 */
   results: MatchResults | null;
 };
 

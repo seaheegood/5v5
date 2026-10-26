@@ -20,6 +20,7 @@ export function CalendarView({
   schedules,
   me,
   users,
+  finishedDates,
   initialDate,
 }: {
   year: number;
@@ -28,6 +29,8 @@ export function CalendarView({
   schedules: Schedule[];
   me: PublicUser;
   users: PublicUser[];
+  /** 관리자가 종료한 날짜 (일반 멤버는 수정 불가) */
+  finishedDates: string[];
   initialDate?: string;
 }) {
   // 시트가 닫히는 애니메이션 동안 내용이 유지되도록 날짜와 open 상태를 분리
@@ -158,6 +161,7 @@ export function CalendarView({
         me={me}
         users={users}
         today={today}
+        finished={selected !== null && finishedDates.includes(selected)}
       />
     </div>
   );

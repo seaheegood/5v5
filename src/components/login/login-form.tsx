@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { login, register } from "@/app/actions/auth";
 import type { Lane } from "@/lib/constants";
 import type { PublicUser } from "@/lib/types";
@@ -12,21 +12,15 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { PinPad } from "./pin-pad";
 
-type Step = { name: "select" } | { name: "pin"; user: PublicUser } | { name: "register" };
+type Step = { name: "select" } | { name: "pin"; user: PublicUser };
 
 /** next: 로그인 후 돌아갈 경로 (서버에서 safeNext 로 다시 검증) */
 export function LoginForm({ users, next }: { users: PublicUser[]; next?: string }) {
-  const [step, setStep] = useState<Step>(users.length ? { name: "select" } : { name: "register" });
+  const [step, setStep] = useState<Step>({ name: "select" });
 
+  // 멤버가 0명일 때만 직접 가입 (첫 관리자). 이후 계정은 관리자가 만든다
+  if (users.length === 0) return <RegisterStep next={next} />;
   if (step.name === "pin") return <PinStep user={step.user} next={next} onBack={() => setStep({ name: "select" })} />;
-  if (step.name === "register")
-    return (
-      <RegisterStep
-        isFirst={users.length === 0}
-        next={next}
-        onBack={users.length ? () => setStep({ name: "select" }) : undefined}
-      />
-    );
 
   return (
     <div className="flex flex-col gap-4">
@@ -49,10 +43,7 @@ export function LoginForm({ users, next }: { users: PublicUser[]; next?: string 
           </li>
         ))}
       </ul>
-      <Button variant="outline" size="lg" onClick={() => setStep({ name: "register" })}>
-        <UserPlus className="size-5" />
-        멤버 추가
-      </Button>
+      <p className="text-center text-sm text-muted-foreground">닉네임이 없으면 관리자에게 계정을 요청하세요</p>
     </div>
   );
 }
@@ -97,7 +88,8 @@ function PinStep({ user, next, onBack }: { user: PublicUser; next?: string; onBa
   );
 }
 
-function RegisterStep({ isFirst, next, onBack }: { isFirst: boolean; next?: string; onBack?: () => void }) {
+/** 첫 관리자 가입 (멤버 0명일 때만) */
+function RegisterStep({ next }: { next?: string }) {
   const [nickname, setNickname] = useState("");
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -121,14 +113,9 @@ function RegisterStep({ isFirst, next, onBack }: { isFirst: boolean; next?: stri
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
-      {onBack && (
-        <button type="button" onClick={onBack} className="flex h-11 items-center gap-1 self-start text-muted-foreground">
-          <ArrowLeft className="size-5" /> 뒤로
-        </button>
-      )}
       <div>
-        <h2 className="text-xl font-bold">멤버 추가</h2>
-        {isFirst && <p className="mt-1 text-sm text-primary">첫 멤버는 관리자</p>}
+        <h2 className="text-xl font-bold">관리자 가입</h2>
+        <p className="mt-1 text-sm text-primary">첫 멤버가 관리자가 돼요. 다른 멤버 계정은 가입 후 관리 탭에서 만들어요.</p>
       </div>
 
       <label className="flex flex-col gap-2">

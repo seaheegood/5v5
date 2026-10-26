@@ -45,6 +45,8 @@ create table if not exists public.users (
   -- PIN 무차별 대입 방지 (5회 실패 시 잠금)
   failed_pin_attempts integer not null default 0,
   locked_until        timestamptz,
+  -- 관리자가 만든 계정/초기화한 PIN(0000)은 첫 로그인 때 재설정 강제
+  must_change_pin     boolean not null default false,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
 
@@ -53,6 +55,9 @@ create table if not exists public.users (
     (tier in ('unranked', 'master', 'grandmaster', 'challenger')) = (tier_division is null)
   )
 );
+
+-- 이전 버전 스키마로 이미 만든 DB 에도 컬럼 추가 (재실행 안전)
+alter table public.users add column if not exists must_change_pin boolean not null default false;
 
 -- 닉네임 대소문자 무시 유일
 create unique index if not exists users_nickname_lower_key
@@ -113,7 +118,41 @@ create trigger match_settings_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------
--- match_votes : 매치 투표 (MVP / 범인). 참여자 1명당 종류별 1표, 본인 제외
+-- match_results : 관리자가 '종료' 처리한 매치 (행이 있으면 종료 상태)
+--   - 종료 시 블루/레드 팀 배정과 승리팀을 기록하고, 이때부터 투표/댓글/스크린샷이 열린다
+-- ---------------------------------------------------------------------
+create table if not exists public.match_results (
+  play_date    date primary key,
+  winner       text not null check (winner in ('blue', 'red')),
+  finished_by  uuid references public.users (id) on delete set null,
+  finished_at  timestamptz not null default now()
+);
+
+-- 종료 시점의 팀 배정 (5대5)
+create table if not exists public.match_players (
+  play_date  date not null references public.match_results (play_date) on delete cascade,
+  user_id    uuid not null references public.users (id) on delete cascade,
+  team       text not null check (team in ('blue', 'red')),
+  primary key (play_date, user_id)
+);
+
+-- ---------------------------------------------------------------------
+-- match_comments : 종료된 매치의 댓글
+-- ---------------------------------------------------------------------
+create table if not exists public.match_comments (
+  id          uuid primary key default gen_random_uuid(),
+  play_date   date not null,
+  user_id     uuid references public.users (id) on delete set null,
+  body        text not null check (char_length(btrim(body)) between 1 and 300),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists match_comments_play_date_idx
+  on public.match_comments (play_date, created_at);
+
+-- ---------------------------------------------------------------------
+-- match_votes : 매치 투표. MVP 는 이긴 팀에서, 범인은 진 팀에서.
+--   투표자는 그 경기 10명, 종류별 1표, 본인 제외
 --   - 누가 누구에게 투표했는지는 화면에 노출하지 않고 집계만 보여준다
 -- ---------------------------------------------------------------------
 create table if not exists public.match_votes (
@@ -150,7 +189,8 @@ create index if not exists match_screenshots_play_date_idx
 -- ---------------------------------------------------------------------
 -- 운영 팁
 -- ---------------------------------------------------------------------
--- * 가장 먼저 가입한 멤버는 앱에서 자동으로 관리자가 된다.
+-- * 멤버가 0명일 때만 앱에서 직접 가입할 수 있고, 그 사람이 관리자가 된다.
+--   이후 계정은 관리자가 '관리' 탭에서 만든다 (초기 PIN 0000, 첫 로그인 때 재설정).
 -- * 수동으로 관리자 지정:
 --     update public.users set is_admin = true where nickname = '조리신';
 -- * PIN 잠금 수동 해제:

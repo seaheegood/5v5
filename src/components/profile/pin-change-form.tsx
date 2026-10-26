@@ -1,24 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { changeMyPin, resetPin } from "@/app/actions/users";
+import { changeMyPin } from "@/app/actions/users";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
 const digitsOnly = (v: string) => v.replace(/\D/g, "").slice(0, 4);
 
-/** 본인: 현재 PIN 확인 후 변경 / 관리자(targetUserId 지정): 바로 초기화 */
-export function PinChangeForm({ targetUserId }: { targetUserId?: string }) {
+/** 본인 PIN 변경 (현재 PIN 확인) */
+export function PinChangeForm() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
-  const isReset = Boolean(targetUserId);
 
   const submit = () =>
     startTransition(async () => {
-      const result = isReset ? await resetPin(targetUserId!, next) : await changeMyPin(current, next);
-      setMessage(result.ok ? { ok: true, text: isReset ? "초기화됨" : "변경됨" } : { ok: false, text: result.error });
+      const result = await changeMyPin(current, next);
+      setMessage(result.ok ? { ok: true, text: "변경됨" } : { ok: false, text: result.error });
       if (result.ok) {
         setCurrent("");
         setNext("");
@@ -33,14 +32,14 @@ export function PinChangeForm({ targetUserId }: { targetUserId?: string }) {
       value={value}
       onChange={(e) => set(digitsOnly(e.target.value))}
       placeholder={placeholder}
-      className="text-center tracking-[0.3em]"
+      className="text-center tracking-[0.3em] placeholder:tracking-normal"
     />
   );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
-        {!isReset && pinInput(current, setCurrent, "현재 PIN")}
+        {pinInput(current, setCurrent, "현재 PIN")}
         {pinInput(next, setNext, "새 PIN")}
       </div>
       {message && (
@@ -48,12 +47,8 @@ export function PinChangeForm({ targetUserId }: { targetUserId?: string }) {
           {message.text}
         </p>
       )}
-      <Button
-        variant="secondary"
-        onClick={submit}
-        disabled={pending || next.length !== 4 || (!isReset && current.length !== 4)}
-      >
-        {isReset ? "PIN 초기화" : "PIN 변경"}
+      <Button variant="secondary" onClick={submit} disabled={pending || next.length !== 4 || current.length !== 4}>
+        PIN 변경
       </Button>
     </div>
   );

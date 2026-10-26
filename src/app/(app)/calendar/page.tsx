@@ -1,6 +1,6 @@
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { requireUser } from "@/lib/auth";
-import { getSchedules, getUsers } from "@/lib/data";
+import { getFinishedDates, getSchedules, getUsers } from "@/lib/data";
 import { isValidDate, monthRange, parseMonth, todayKST } from "@/lib/date";
 
 export default async function CalendarPage({
@@ -19,6 +19,7 @@ export default async function CalendarPage({
 
   const { from, to } = monthRange(year, month);
   const [schedules, users] = await Promise.all([getSchedules({ from, to }), me.is_admin ? getUsers() : []]);
+  const finishedDates = await getFinishedDates([...new Set(schedules.map((s) => s.play_date))]);
 
   return (
     <CalendarView
@@ -29,6 +30,7 @@ export default async function CalendarPage({
       schedules={schedules}
       me={me}
       users={users}
+      finishedDates={finishedDates}
       initialDate={initialDate}
     />
   );

@@ -14,13 +14,16 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   return repo.findUser(userId);
 });
 
-/** 비로그인이면 /login?next=<현재 경로> 로 보낸다 (경로는 proxy.ts 가 넣어줌) */
+/**
+ * 로그인 필수. 비로그인이면 /login?next=<현재 경로>, PIN 재설정이 필요하면 /change-pin 으로 보낸다.
+ * (경로는 proxy.ts 가 넣어줌. Server Action 에서도 같은 규칙으로 막힌다)
+ */
 export async function requireUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
-  if (!user) {
-    const path = (await headers()).get("x-pathname");
-    redirect(path && path !== "/" ? `/login?next=${encodeURIComponent(path)}` : "/login");
-  }
+  const path = (await headers()).get("x-pathname");
+  const next = path && path !== "/" ? `?next=${encodeURIComponent(path)}` : "";
+  if (!user) redirect(`/login${next}`);
+  if (user.must_change_pin) redirect(`/change-pin${next}`);
   return user;
 }
 

@@ -60,6 +60,11 @@ export const MATCH_FULL = 10;
 export const PER_LANE = 2;
 
 export const VOTE_LABEL = { mvp: "MVP", blame: "범인" } as const;
+/** 댓글 최대 길이 */
+export const MAX_COMMENT_LENGTH = 300;
+/** 관리자가 만든 계정/초기화한 PIN. 첫 로그인 때 재설정해야 하고, 새 PIN 으로는 쓸 수 없다 */
+export const INITIAL_PIN = "0000";
+export const TEAM_LABEL = { blue: "블루", red: "레드" } as const;
 /** 매치당 스크린샷 최대 개수 */
 export const MAX_SCREENSHOTS = 10;
 

@@ -23,6 +23,8 @@ type Props = {
   /** 관리자일 때만 전달: 다른 멤버 일정 대리 등록용 */
   users: PublicUser[];
   today: string;
+  /** 관리자가 종료한 매치 날짜 */
+  finished: boolean;
 };
 
 /** 달력 날짜 터치 시 올라오는 일정 등록 바텀 시트 */
@@ -43,11 +45,12 @@ function SheetBody({
   me,
   users,
   today,
+  finished,
   onDone,
 }: Omit<Props, "open" | "onOpenChange" | "date"> & { date: string; onDone: () => void }) {
   const [targetId, setTargetId] = useState(me.id);
   const target = users.find((u) => u.id === targetId) ?? me;
-  const readOnly = date < today && !me.is_admin;
+  const readOnly = (date < today || finished) && !me.is_admin;
 
   const joined = toParticipants(schedules);
   const declined = schedules.filter((s) => s.status === "decline");
@@ -81,7 +84,7 @@ function SheetBody({
         )}
 
         {readOnly ? (
-          <p className="rounded-xl bg-muted p-4 text-center text-muted-foreground">지난 날짜</p>
+          <p className="rounded-xl bg-muted p-4 text-center text-muted-foreground">{finished ? "종료된 매치" : "지난 날짜"}</p>
         ) : (
           <ScheduleForm
             key={target.id}

@@ -5,11 +5,47 @@ import { canEdit, requireUser } from "@/lib/auth";
 import { hashPin, isValidPin, verifyPin } from "@/lib/pin";
 import { DuplicateNicknameError, repo } from "@/lib/repo";
 import type { UserPatch } from "@/lib/repo/types";
-import { hasDivision, isDivision, isLane, isTier, type Division, type Lane, type Tier } from "@/lib/constants";
+import { INITIAL_PIN, hasDivision, isDivision, isLane, isTier, type Division, type Lane, type Tier } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/", "layout");
+}
+
+/**
+ * 관리자: 멤버 계정 생성. 초기 PIN 은 0000 이고 첫 로그인 때 재설정해야 한다.
+ */
+export async function createMember(input: {
+  nickname: string;
+  tier: Tier;
+  division: Division | null;
+  lanes: Lane[];
+}): Promise<ActionResult> {
+  const me = await requireUser();
+  if (!me.is_admin) return { ok: false, error: "관리자만 계정을 만들 수 있어요." };
+
+  const nickname = input.nickname?.trim() ?? "";
+  if (nickname.length < 1 || nickname.length > 12) return { ok: false, error: "닉네임은 1~12자로 입력해 주세요." };
+  if (!isTier(input.tier)) return { ok: false, error: "티어를 선택해 주세요." };
+  if (hasDivision(input.tier) && !isDivision(input.division)) return { ok: false, error: "디비전(I~IV)을 선택해 주세요." };
+
+  try {
+    await repo.createUser({
+      nickname,
+      pin_hash: hashPin(INITIAL_PIN),
+      tier: input.tier,
+      tier_division: hasDivision(input.tier) ? input.division : null,
+      preferred_lanes: [...new Set(input.lanes)].filter(isLane),
+      is_admin: false,
+      must_change_pin: true,
+    });
+  } catch (e) {
+    if (e instanceof DuplicateNicknameError) return { ok: false, error: "이미 있는 닉네임이에요." };
+    throw e;
+  }
+
+  revalidateAll();
+  return { ok: true };
 }
 
 /**
@@ -59,21 +95,23 @@ export async function updateProfile(input: {
 export async function changeMyPin(currentPin: string, newPin: string): Promise<ActionResult> {
   const me = await requireUser();
   if (!isValidPin(newPin)) return { ok: false, error: "새 PIN은 숫자 4자리예요." };
+  if (newPin === INITIAL_PIN) return { ok: false, error: `${INITIAL_PIN}은 쓸 수 없어요.` };
 
   const auth = await repo.findAuth(me.id);
   if (!auth || !verifyPin(currentPin, auth.pin_hash)) return { ok: false, error: "현재 PIN이 틀렸어요." };
 
-  await repo.setPinHash(me.id, hashPin(newPin));
+  await repo.setPinHash(me.id, hashPin(newPin), false);
   return { ok: true };
 }
 
-/** 관리자: 멤버 PIN 초기화 + 잠금 해제 */
-export async function resetPin(userId: string, newPin: string): Promise<ActionResult> {
+/** 관리자: 멤버 PIN 을 0000 으로 초기화 + 잠금 해제. 다음 로그인 때 재설정해야 한다 */
+export async function resetPin(userId: string): Promise<ActionResult> {
   const me = await requireUser();
   if (!me.is_admin) return { ok: false, error: "관리자만 가능해요." };
-  if (!isValidPin(newPin)) return { ok: false, error: "PIN은 숫자 4자리예요." };
+  if (userId === me.id) return { ok: false, error: "본인 PIN은 내 정보에서 바꿔 주세요." };
 
-  await repo.setPinHash(userId, hashPin(newPin));
+  await repo.setPinHash(userId, hashPin(INITIAL_PIN), true);
+  revalidateAll();
   return { ok: true };
 }
 
