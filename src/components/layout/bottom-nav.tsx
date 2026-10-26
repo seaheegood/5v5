@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Home, Shield, User } from "lucide-react";
+import { CalendarDays, Heart, Home, Shield, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
@@ -10,6 +10,7 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
   const items = [
     { href: "/", label: "매치", icon: Home },
     { href: "/calendar", label: "달력", icon: CalendarDays },
+    { href: "/players", label: "응원", icon: Heart },
     { href: "/profile", label: "내 정보", icon: User },
     ...(isAdmin ? [{ href: "/admin", label: "관리", icon: Shield }] : []),
   ];

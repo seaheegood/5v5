@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { deleteMatch } from "@/app/actions/match";
-import { MATCH_FULL, TEAM_LABEL } from "@/lib/constants";
+import { MATCH_FULL, TEAM_LABEL, formatStake } from "@/lib/constants";
 import { formatKoreanDate, todayKST } from "@/lib/date";
 import { seatedCount } from "@/lib/participants";
 import type { MatchCardData } from "@/lib/types";
@@ -104,7 +104,7 @@ export function TicketDetail({
             <span className="text-muted-foreground">방식</span>{" "}
             <b>{card.settings?.matchFormat ?? "미정"}</b>
             <span className="mx-1.5 text-muted-foreground">·</span>
-            <span className="text-muted-foreground">판돈</span> <b>{card.settings?.stake || "미정"}</b>
+            <span className="text-muted-foreground">판돈</span> <b>{formatStake(card.settings?.stake)}</b>
           </p>
           {card.settings && (
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -112,7 +112,8 @@ export function TicketDetail({
             </p>
           )}
         </div>
-        {!past && !finished && <MatchSettingsSheet date={card.date} settings={card.settings} />}
+        {/* 지난/종료된 매치는 관리자만 (판돈을 바꾸면 수익도 다시 계산된다) */}
+        {((!past && !finished) || me.isAdmin) && <MatchSettingsSheet date={card.date} settings={card.settings} />}
       </section>
 
       {/* 종료된 매치는 결과가 길어서 댓글로 바로 가는 줄을 둔다 */}

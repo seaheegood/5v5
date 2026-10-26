@@ -5,6 +5,7 @@ import { addDays, todayKST } from "../date";
 import { hashPin } from "../pin";
 import type { PublicUser, Schedule, ScheduleStatus, Team, VoteKind } from "../types";
 import {
+  type CheerRow,
   DuplicateNicknameError,
   SlotTakenError,
   type CommentRow,
@@ -30,7 +31,14 @@ type ScheduleRow = {
   team: Team | null;
   lane: Lane | null;
 };
-type MatchSettingsRow = { play_date: string; match_format: string; stake: string; updated_by: string | null; updated_at: string };
+type MatchSettingsRow = {
+  play_date: string;
+  match_format: string;
+  stake_amount: number | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+type MemCheer = { id: string; target_id: string; author_id: string | null; body: string; created_at: string };
 type MatchResultRow = { play_date: string; winner: Team; finished_by: string | null };
 type MemComment = { id: string; play_date: string; user_id: string | null; body: string; created_at: string };
 type ShotRow = { id: string; play_date: string; storage_path: string; uploader_id: string | null; created_at: string };
@@ -43,6 +51,7 @@ type Store = {
   players: PlayerRow[];
   votes: VoteRow[];
   comments: MemComment[];
+  cheers: MemCheer[];
   screenshots: ShotRow[];
 };
 
@@ -95,7 +104,16 @@ function seed(): Store {
     [10, "blue", "top"], [5, "red", "top"], [1, "blue", "jungle"], [6, "red", "jungle"], [2, "blue", "mid"],
     [0, "red", "mid"], [3, "blue", "adc"], [7, "red", "adc"], [4, "blue", "support"], [8, "red", "support"],
   ];
-  add(-7, ten); // 지난 매치 (종료됨)
+  // 2주 전: 2팀 승 (판돈 50,000원). 전적/수익이 사람마다 다르게 나오도록 라인업을 조금 다르게
+  const twoWeeks: Seed[] = [
+    [10, "red", "top"], [5, "blue", "top"], [1, "blue", "jungle"], [6, "red", "jungle"], [2, "red", "mid"],
+    [0, "blue", "mid"], [3, "blue", "adc"], [7, "red", "adc"], [9, "blue", "support"], [8, "red", "support"],
+  ];
+  add(-14, twoWeeks);
+  // 3~12주 전: 매주 한 판씩 (경기 기록 '전체 보기' 확인용)
+  const olderWeeks = Array.from({ length: 10 }, (_, i) => -(i + 3) * 7);
+  for (const diff of olderWeeks) add(diff, diff % 14 === 0 ? twoWeeks : ten);
+  add(-7, ten); // 지난 매치 (종료됨, 1팀 승, 판돈 30,000원)
   add(0, ten); // 오늘 매치 (10자리 다 참, 아직 종료 전 → 관리자 종료 확인용)
   // 내일: 7자리 + 자리 미정 2명 + 불참 1명 (김가렌은 아직 응답 없음 → 빈 칸 들어가기 확인용)
   add(1, [
@@ -107,14 +125,34 @@ function seed(): Store {
   add(8, ten);
 
   const settings: MatchSettingsRow[] = [
-    { play_date: addDays(today, -7), match_format: "단판", stake: "커피 내기", updated_by: users[2].id, updated_at: now },
-    { play_date: addDays(today, 1), match_format: "3판 2선승제", stake: "진 팀이 치킨 쏘기", updated_by: users[1].id, updated_at: now },
+    { play_date: addDays(today, -14), match_format: "3판 2선승제", stake_amount: 50000, updated_by: users[0].id, updated_at: now },
+    ...olderWeeks.map((diff, i) => ({
+      play_date: addDays(today, diff),
+      match_format: "단판",
+      stake_amount: i % 3 === 0 ? 50000 : 30000,
+      updated_by: users[0].id,
+      updated_at: now,
+    })),
+    { play_date: addDays(today, -7), match_format: "단판", stake_amount: 30000, updated_by: users[2].id, updated_at: now },
+    { play_date: addDays(today, 1), match_format: "3판 2선승제", stake_amount: 30000, updated_by: users[1].id, updated_at: now },
   ];
 
   // 지난 매치 종료 처리: 1팀 승, 자리 그대로 스냅샷
   const lastWeek = addDays(today, -7);
-  const results: MatchResultRow[] = [{ play_date: lastWeek, winner: "blue", finished_by: users[0].id }];
-  const players: PlayerRow[] = ten.map(([i, team]) => ({ play_date: lastWeek, user_id: users[i].id, team: team as Team }));
+  const twoWeeksAgo = addDays(today, -14);
+  const results: MatchResultRow[] = [
+    { play_date: twoWeeksAgo, winner: "red", finished_by: users[0].id },
+    { play_date: lastWeek, winner: "blue", finished_by: users[0].id },
+    ...olderWeeks.map((diff, i): MatchResultRow => ({
+      play_date: addDays(today, diff),
+      winner: i % 3 === 1 ? "red" : "blue",
+      finished_by: users[0].id,
+    })),
+  ];
+  const lineupOf = (diff: number) => (diff === -14 || (diff < -14 && diff % 14 === 0) ? twoWeeks : ten);
+  const players: PlayerRow[] = [-14, -7, ...olderWeeks].flatMap((diff) =>
+    lineupOf(diff).map(([i, team]) => ({ play_date: addDays(today, diff), user_id: users[i].id, team: team as Team })),
+  );
 
   // 지난 매치 투표 (MVP 는 1팀에서, 범인은 2팀에서)
   const vote = (voter: number, kind: VoteKind, target: number): VoteRow => ({
@@ -143,7 +181,20 @@ function seed(): Store {
     comment(tomorrow, 5, "탑 둘 다 찼네.. 서폿 가도 됨?", 60),
   ];
 
-  return { users, schedules, settings, results, players, votes, comments, screenshots: [] };
+  const cheer = (target: number, author: number, body: string, minutesAgo: number): MemCheer => ({
+    id: randomUUID(),
+    target_id: users[target].id,
+    author_id: users[author].id,
+    body,
+    created_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+  });
+  const cheers: MemCheer[] = [
+    cheer(2, 1, "미드 차이 ㄹㅇ 인정합니다", 3000),
+    cheer(2, 8, "다음에 같은 팀 해주세요 🙏", 1200),
+    cheer(0, 2, "가렌 장인 화이팅...", 600),
+  ];
+
+  return { users, schedules, settings, results, players, votes, comments, cheers, screenshots: [] };
 }
 
 // 개발 서버 HMR 에도 유지되도록 globalThis 에 보관
@@ -174,6 +225,7 @@ const toScreenshot = (s: ShotRow): ScreenshotRow => ({
 });
 
 const toComment = (c: MemComment): CommentRow => ({ ...c, nickname: nicknameOf(c.user_id) });
+const toCheer = (c: MemCheer): CheerRow => ({ ...c, nickname: nicknameOf(c.author_id) });
 
 export const memoryRepo: Repo = {
   // ── users ─────────────────────────────
@@ -236,6 +288,8 @@ export const memoryRepo: Repo = {
     s.players = s.players.filter((p) => p.user_id !== id);
     for (const m of s.results) if (m.finished_by === id) m.finished_by = null;
     for (const m of s.comments) if (m.user_id === id) m.user_id = null;
+    s.cheers = s.cheers.filter((c) => c.target_id !== id);
+    for (const c of s.cheers) if (c.author_id === id) c.author_id = null;
     for (const m of s.settings) if (m.updated_by === id) m.updated_by = null;
     for (const m of s.screenshots) if (m.uploader_id === id) m.uploader_id = null;
   },
@@ -297,7 +351,7 @@ export const memoryRepo: Repo = {
         (m): SettingsRow => ({
           play_date: m.play_date,
           match_format: m.match_format,
-          stake: m.stake,
+          stake_amount: m.stake_amount,
           updated_at: m.updated_at,
           updater_nickname: nicknameOf(m.updated_by),
         }),
@@ -366,6 +420,19 @@ export const memoryRepo: Repo = {
     store().votes = store().votes.filter((v) => !(v.play_date === date && v.voter_id === voterId && v.kind === kind));
   },
 
+  async listRecords(userId) {
+    const s = store();
+    return s.players
+      .filter((p) => !userId || p.user_id === userId)
+      .flatMap((p) => {
+        const result = s.results.find((r) => r.play_date === p.play_date);
+        if (!result) return [];
+        const stake = s.settings.find((m) => m.play_date === p.play_date)?.stake_amount ?? null;
+        return [{ user_id: p.user_id, play_date: p.play_date, team: p.team, winner: result.winner, stake_amount: stake }];
+      })
+      .sort((a, b) => b.play_date.localeCompare(a.play_date));
+  },
+
   // ── comments ──────────────────────────
   async listComments(dates) {
     return store()
@@ -385,6 +452,27 @@ export const memoryRepo: Repo = {
 
   async deleteComment(id) {
     store().comments = store().comments.filter((c) => c.id !== id);
+  },
+
+  // ── cheers (응원하기) ──────────────────
+  async listCheers(targetId) {
+    return store()
+      .cheers.filter((c) => c.target_id === targetId)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map(toCheer);
+  },
+
+  async insertCheer(input) {
+    store().cheers.push({ id: randomUUID(), ...input, created_at: new Date().toISOString() });
+  },
+
+  async findCheer(id) {
+    const cheer = store().cheers.find((c) => c.id === id);
+    return cheer ? toCheer(cheer) : null;
+  },
+
+  async deleteCheer(id) {
+    store().cheers = store().cheers.filter((c) => c.id !== id);
   },
 
   // ── screenshots ───────────────────────

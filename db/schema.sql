@@ -110,6 +110,8 @@ create trigger schedules_set_updated_at
 
 -- ---------------------------------------------------------------------
 -- match_settings : 날짜별 매치 카드 설정 (방식/판돈, 마지막 수정자)
+--   - 판돈은 1인당 금액(원) stake_amount. 이긴 팀 +판돈, 진 팀 -판돈으로 수익을 계산한다
+--   - stake(텍스트)는 이전 버전 호환용으로만 남아 있고 더 이상 쓰지 않는다
 --   - 티켓 자체는 참여자가 1명이라도 있으면 자동 노출되므로 별도 행이 필요 없다.
 --   - 누군가 방식/판돈을 수정하는 순간 upsert 된다.
 -- ---------------------------------------------------------------------
@@ -119,10 +121,20 @@ create table if not exists public.match_settings (
                 check (char_length(match_format) between 1 and 30),
   stake         text not null default ''
                 check (char_length(stake) <= 50),
+  stake_amount  integer check (stake_amount between 0 and 10000000),
   updated_by    uuid references public.users (id) on delete set null,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
+
+-- 이전 버전 DB: 컬럼 추가 + 숫자로만 적힌 예전 판돈("5000", "3,000원")은 금액으로 옮긴다 (재실행 안전)
+alter table public.match_settings add column if not exists stake_amount integer
+  check (stake_amount between 0 and 10000000);
+update public.match_settings
+set stake_amount = regexp_replace(stake, '[^0-9]', '', 'g')::integer
+where stake_amount is null
+  and stake ~ '^\s*[0-9][0-9,]*\s*원?\s*$'
+  and char_length(regexp_replace(stake, '[^0-9]', '', 'g')) between 1 and 7;
 
 drop trigger if exists match_settings_set_updated_at on public.match_settings;
 create trigger match_settings_set_updated_at
@@ -197,6 +209,20 @@ create table if not exists public.match_screenshots (
 
 create index if not exists match_screenshots_play_date_idx
   on public.match_screenshots (play_date);
+
+-- ---------------------------------------------------------------------
+-- user_cheers : 멤버 개인 페이지의 '응원하기' (동작은 티켓 댓글과 같음)
+-- ---------------------------------------------------------------------
+create table if not exists public.user_cheers (
+  id          uuid primary key default gen_random_uuid(),
+  target_id   uuid not null references public.users (id) on delete cascade,
+  author_id   uuid references public.users (id) on delete set null,
+  body        text not null check (char_length(btrim(body)) between 1 and 300),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists user_cheers_target_idx
+  on public.user_cheers (target_id, created_at);
 
 -- ---------------------------------------------------------------------
 -- 운영 팁

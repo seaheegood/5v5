@@ -67,6 +67,25 @@
   button {
     @apply cursor-pointer touch-manipulation select-none;
   }
+
+  /* 누름 효과: 모든 버튼/링크가 눌리는 순간 살짝 줄어들고 흐려진다 (iOS 는 PressFeedback 필요) */
+  button,
+  a {
+    transition-property: transform, opacity, background-color, border-color, color;
+    transition-duration: 90ms;
+    transition-timing-function: ease-out;
+  }
+  button:not(:disabled):active,
+  a:active {
+    transform: scale(0.97);
+    opacity: 0.75;
+  }
+}
+
+/* 화면 이동 진행 바 */
+@keyframes nav-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 /* PIN 오류 시 흔들림 */

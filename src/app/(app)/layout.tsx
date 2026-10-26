@@ -2,7 +2,9 @@ import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { PlayerRow } from "@/components/icons/player-row";
+import { Suspense } from "react";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { NavProgress } from "@/components/layout/nav-progress";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +37,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
       <main className="px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))]">{children}</main>
       <BottomNav isAdmin={me.is_admin} />
+      <Suspense>
+        <NavProgress />
+      </Suspense>
     </div>
   );
 }

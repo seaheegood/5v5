@@ -4,8 +4,10 @@ import type { PublicUser, Schedule } from "../types";
 import {
   DuplicateNicknameError,
   SlotTakenError,
+  type CheerRow,
   type CommentRow,
   type PlayerRow,
+  type RecordRow,
   type Repo,
   type ResultRow,
   type ScreenshotRow,
@@ -173,7 +175,7 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async listSettings(dates) {
       if (dates.length === 0) return [];
       return (await sql()`
-        select m.play_date::text, m.match_format, m.stake, m.updated_at::text, u.nickname as updater_nickname
+        select m.play_date::text, m.match_format, m.stake_amount, m.updated_at::text, u.nickname as updater_nickname
         from match_settings m
         left join users u on u.id = m.updated_by
         where m.play_date = any(${dates}::date[])`) as SettingsRow[];
@@ -181,10 +183,13 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
 
     async upsertSettings(input) {
       await sql()`
-        insert into match_settings (play_date, match_format, stake, updated_by)
-        values (${input.play_date}, ${input.match_format}, ${input.stake}, ${input.updated_by})
+        insert into match_settings (play_date, match_format, stake_amount, updated_by)
+        values (${input.play_date}, ${input.match_format}, ${input.stake_amount}, ${input.updated_by})
         on conflict (play_date)
-        do update set match_format = excluded.match_format, stake = excluded.stake, updated_by = excluded.updated_by`;
+        do update set
+          match_format = excluded.match_format,
+          stake_amount = excluded.stake_amount,
+          updated_by = excluded.updated_by`;
     },
 
     async deleteMatch(date) {
@@ -255,6 +260,16 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
         delete from match_votes where play_date = ${date} and voter_id = ${voterId} and kind = ${kind}`;
     },
 
+    async listRecords(userId) {
+      return (await sql()`
+        select p.user_id, p.play_date::text, p.team, r.winner, m.stake_amount
+        from match_players p
+        join match_results r on r.play_date = p.play_date
+        left join match_settings m on m.play_date = p.play_date
+        where ${userId ?? null}::uuid is null or p.user_id = ${userId ?? null}::uuid
+        order by p.play_date desc`) as RecordRow[];
+    },
+
     // ── comments ──────────────────────────
     async listComments(dates) {
       if (dates.length === 0) return [];
@@ -287,6 +302,40 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async deleteComment(id) {
       if (!isUuid(id)) return;
       await sql()`delete from match_comments where id = ${id}`;
+    },
+
+    // ── cheers (응원하기) ──────────────────
+    async listCheers(targetId) {
+      if (!isUuid(targetId)) return [];
+      return (await sql()`
+        select c.id, c.target_id, c.author_id, u.nickname, c.body,
+               to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
+        from user_cheers c
+        left join users u on u.id = c.author_id
+        where c.target_id = ${targetId}
+        order by c.created_at`) as CheerRow[];
+    },
+
+    async insertCheer(input) {
+      await sql()`
+        insert into user_cheers (target_id, author_id, body)
+        values (${input.target_id}, ${input.author_id}, ${input.body})`;
+    },
+
+    async findCheer(id) {
+      if (!isUuid(id)) return null;
+      const rows = await sql()`
+        select c.id, c.target_id, c.author_id, u.nickname, c.body,
+               to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
+        from user_cheers c
+        left join users u on u.id = c.author_id
+        where c.id = ${id}`;
+      return (rows[0] as CheerRow | undefined) ?? null;
+    },
+
+    async deleteCheer(id) {
+      if (!isUuid(id)) return;
+      await sql()`delete from user_cheers where id = ${id}`;
     },
 
     // ── screenshots ───────────────────────

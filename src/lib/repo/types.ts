@@ -45,7 +45,7 @@ export type UserPatch = {
 export type SettingsRow = {
   play_date: string;
   match_format: string;
-  stake: string;
+  stake_amount: number | null;
   updated_at: string;
   updater_nickname: string | null;
 };
@@ -59,6 +59,19 @@ export type CommentRow = {
   id: string;
   play_date: string;
   user_id: string | null;
+  nickname: string | null;
+  body: string;
+  created_at: string;
+};
+
+/** 종료된 매치에서 한 멤버의 기록 */
+export type RecordRow = { user_id: string; play_date: string; team: Team; winner: Team; stake_amount: number | null };
+
+/** 응원하기 (개인 페이지 댓글) */
+export type CheerRow = {
+  id: string;
+  target_id: string;
+  author_id: string | null;
   nickname: string | null;
   body: string;
   created_at: string;
@@ -105,7 +118,12 @@ export interface Repo {
 
   // ── match settings ────────────────────
   listSettings(dates: string[]): Promise<SettingsRow[]>;
-  upsertSettings(input: { play_date: string; match_format: string; stake: string; updated_by: string }): Promise<void>;
+  upsertSettings(input: {
+    play_date: string;
+    match_format: string;
+    stake_amount: number | null;
+    updated_by: string;
+  }): Promise<void>;
   /** 그날의 응답/설정/결과/투표/댓글/스크린샷 전부 삭제. 삭제된 스크린샷 파일 경로를 돌려준다 */
   deleteMatch(date: string): Promise<string[]>;
 
@@ -122,11 +140,20 @@ export interface Repo {
   upsertVote(input: VoteRow): Promise<void>;
   deleteVote(date: string, voterId: string, kind: VoteKind): Promise<void>;
 
+  /** 종료된 매치 기록 (userId 를 주면 그 멤버만), 최근 날짜 먼저 */
+  listRecords(userId?: string): Promise<RecordRow[]>;
+
   // ── comments ──────────────────────────
   listComments(dates: string[]): Promise<CommentRow[]>;
   insertComment(input: { play_date: string; user_id: string; body: string }): Promise<void>;
   findComment(id: string): Promise<CommentRow | null>;
   deleteComment(id: string): Promise<void>;
+
+  // ── cheers (응원하기) ──────────────────
+  listCheers(targetId: string): Promise<CheerRow[]>;
+  insertCheer(input: { target_id: string; author_id: string; body: string }): Promise<void>;
+  findCheer(id: string): Promise<CheerRow | null>;
+  deleteCheer(id: string): Promise<void>;
 
   // ── screenshots ───────────────────────
   listScreenshots(dates: string[]): Promise<ScreenshotRow[]>;

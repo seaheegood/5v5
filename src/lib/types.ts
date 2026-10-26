@@ -38,7 +38,8 @@ export type Participant = {
 
 export type MatchSettings = {
   matchFormat: string;
-  stake: string;
+  /** 1인당 판돈(원). null 이면 미정, 0 이면 없음 */
+  stake: number | null;
   updatedByNickname: string | null;
   updatedAt: string;
 };
@@ -85,6 +86,34 @@ export type MatchCardData = {
   comments: Comment[];
   /** 종료된 매치만 존재 */
   results: MatchResults | null;
+};
+
+/** 개인 페이지의 경기 한 건 (종료된 매치) */
+export type PlayerMatch = {
+  date: string;
+  team: Team;
+  won: boolean;
+  /** 이 경기에서 번 돈(+)/잃은 돈(-). 판돈 미정이면 null */
+  profit: number | null;
+  /** 이 경기에서 최다 득표(동점 포함)로 뽑힌 상. 개인 페이지에서만 채운다 */
+  award?: VoteKind | null;
+};
+
+/** 통산 전적 */
+export type PlayerRecord = {
+  wins: number;
+  losses: number;
+  /** 판돈이 걸린 경기의 합계 (+ 딴 돈 / - 잃은 돈) */
+  profit: number;
+  matches: PlayerMatch[];
+};
+
+/** 개인 페이지용: 통산 전적 + MVP/범인 횟수 */
+export type PlayerProfile = PlayerRecord & {
+  /** 최다 득표 MVP 횟수 (동점이면 모두 인정) */
+  mvp: number;
+  /** 최다 득표 범인 횟수 (동점이면 모두 인정) */
+  blame: number;
 };
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
