@@ -11,6 +11,7 @@ import type { PublicUser, Schedule, ScheduleStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PlayerRow } from "../icons/player-row";
 import { Button } from "../ui/button";
+import { NativeSelect } from "../ui/native-select";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "../ui/drawer";
 
 type Props = {
@@ -68,10 +69,10 @@ function SheetBody({
         {me.is_admin && users.length > 0 && (
           <label className="flex items-center gap-3 rounded-xl bg-primary/10 p-3 text-sm font-semibold">
             <span className="shrink-0 text-primary">대상</span>
-            <select
+            <NativeSelect
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              className="h-11 flex-1 rounded-lg border-2 border-input bg-background px-3 text-base"
+              className="flex-1"
             >
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -79,7 +80,7 @@ function SheetBody({
                   {u.id === me.id ? " (나)" : ""}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         )}
 
