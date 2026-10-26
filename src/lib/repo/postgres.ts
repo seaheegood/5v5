@@ -3,6 +3,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { PublicUser, Schedule } from "../types";
 import {
   DuplicateNicknameError,
+  SlotTakenError,
   type CommentRow,
   type PlayerRow,
   type Repo,
@@ -116,7 +117,7 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     // ── schedules ─────────────────────────
     async listSchedules({ from, to }) {
       const rows = (await sql()`
-        select s.id, s.user_id, s.play_date::text, s.status, s.lane, u.nickname, u.tier, u.tier_division
+        select s.id, s.user_id, s.play_date::text, s.status, s.team, s.lane, u.nickname, u.tier, u.tier_division
         from schedules s
         join users u on u.id = s.user_id
         where (${from ?? null}::date is null or s.play_date >= ${from ?? null}::date)
@@ -130,11 +131,32 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     },
 
     async upsertSchedule(input) {
+      // 불참이면 자리도 비우고, 참여면 이미 고른 자리는 그대로 둔다
       await sql()`
-        insert into schedules (user_id, play_date, status, lane)
-        values (${input.user_id}, ${input.play_date}, ${input.status}, ${input.lane})
+        insert into schedules (user_id, play_date, status)
+        values (${input.user_id}, ${input.play_date}, ${input.status})
         on conflict (user_id, play_date)
-        do update set status = excluded.status, lane = excluded.lane`;
+        do update set
+          status = excluded.status,
+          team = case when excluded.status = 'decline' then null else schedules.team end,
+          lane = case when excluded.status = 'decline' then null else schedules.lane end`;
+    },
+
+    async takeSlot(input) {
+      try {
+        await sql()`
+          insert into schedules (user_id, play_date, status, team, lane)
+          values (${input.user_id}, ${input.play_date}, 'join', ${input.team}, ${input.lane})
+          on conflict (user_id, play_date)
+          do update set status = 'join', team = excluded.team, lane = excluded.lane`;
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new SlotTakenError();
+        throw e;
+      }
+    },
+
+    async clearSlot(userId, date) {
+      await sql()`update schedules set team = null, lane = null where user_id = ${userId} and play_date = ${date}`;
     },
 
     async deleteSchedule(userId, date) {

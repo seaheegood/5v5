@@ -1,23 +1,15 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { ChevronDown, ImagePlus, Trash2, Undo2, X } from "lucide-react";
-import {
-  addComment,
-  castVote,
-  deleteComment,
-  deleteScreenshot,
-  reopenMatch,
-  uploadScreenshot,
-} from "@/app/actions/results";
-import { MAX_COMMENT_LENGTH, MAX_SCREENSHOTS, TEAM_LABEL, VOTE_LABEL } from "@/lib/constants";
-import type { Comment, MatchResults as Results, Participant, Screenshot, Team, VoteKind } from "@/lib/types";
+import { ChevronDown, ImagePlus, Trash2, Undo2 } from "lucide-react";
+import { castVote, deleteScreenshot, reopenMatch, uploadScreenshot } from "@/app/actions/results";
+import { MAX_SCREENSHOTS, TEAM_LABEL, VOTE_LABEL } from "@/lib/constants";
+import type { MatchResults as Results, Participant, Screenshot, Team, VoteKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { LaneIcon } from "../icons/lane-icon";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "../ui/drawer";
-import { TEAM_STYLE } from "./finish-sheet";
+import { TEAM_STYLE } from "./team-style";
 
 type Me = { id: string; isAdmin: boolean };
 
@@ -34,7 +26,7 @@ function leaders(tally: Record<string, number>, participants: Participant[]): st
 const otherTeam = (team: Team): Team => (team === "blue" ? "red" : "blue");
 
 /**
- * 종료된 매치의 결과: 스크린샷 → MVP(이긴 팀) → 범인(진 팀) → 댓글.
+ * 종료된 매치의 결과: 스크린샷 → MVP(이긴 팀) → 범인(진 팀). (댓글은 티켓 맨 아래에 항상)
  * 관리자는 맨 아래에서 종료를 취소할 수 있다.
  */
 export function MatchResults({
@@ -76,7 +68,6 @@ export function MatchResults({
           {[
             mvp && `MVP ${mvp}`,
             blame && `범인 ${blame}`,
-            results.comments.length > 0 && `댓글 ${results.comments.length}`,
             results.screenshots.length > 0 && `사진 ${results.screenshots.length}`,
           ]
             .filter(Boolean)
@@ -90,7 +81,6 @@ export function MatchResults({
           <Screenshots date={date} screenshots={results.screenshots} me={me} />
           <VoteBlock kind="mvp" date={date} participants={participants} results={results} me={me} />
           <VoteBlock kind="blame" date={date} participants={participants} results={results} me={me} />
-          <Comments date={date} comments={results.comments} me={me} />
           {me.isAdmin && (
             <Button variant="ghost" size="sm" onClick={reopen} disabled={reopening} className="self-center text-muted-foreground">
               <Undo2 className="size-4" />
@@ -167,7 +157,7 @@ function VoteBlock({
                   : "border-border",
               )}
             >
-              <LaneIcon lane={p.lane} className="size-4" />
+              {p.lane && <LaneIcon lane={p.lane} className="size-4" />}
               <span className={cn("flex-1 truncate text-left", top && "font-bold")}>{p.nickname}</span>
               {count > 0 && (
                 <span
@@ -183,95 +173,6 @@ function VoteBlock({
           );
         })}
       </div>
-      {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
-    </div>
-  );
-}
-
-const commentTime = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  month: "numeric",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-/** 댓글: 누구나 작성, 작성자/관리자만 삭제 */
-function Comments({ date, comments, me }: { date: string; comments: Comment[]; me: Me }) {
-  const [body, setBody] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!body.trim()) return;
-    startTransition(async () => {
-      setError(null);
-      const result = await addComment({ date, body });
-      if (result.ok) setBody("");
-      else setError(result.error);
-    });
-  };
-
-  const remove = (id: string) => {
-    if (!confirm("댓글을 삭제할까요?")) return;
-    startTransition(async () => {
-      const result = await deleteComment(id);
-      if (!result.ok) setError(result.error);
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <h4 className="font-bold">
-        댓글 <span className="text-sm font-normal text-muted-foreground tabular-nums">{comments.length}</span>
-      </h4>
-
-      {comments.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border/60">
-          {comments.map((c) => (
-            <li key={c.id} className="flex items-start gap-2 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className={cn("text-sm font-bold", c.userId === me.id && "text-primary")}>
-                    {c.nickname ?? "탈퇴한 멤버"}
-                  </span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {commentTime.format(new Date(c.createdAt))}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-base break-words whitespace-pre-wrap">{c.body}</p>
-              </div>
-              {(c.userId === me.id || me.isAdmin) && (
-                <button
-                  type="button"
-                  onClick={() => remove(c.id)}
-                  disabled={pending}
-                  aria-label="댓글 삭제"
-                  className="-mr-2 flex size-10 shrink-0 items-center justify-center text-muted-foreground"
-                >
-                  <X className="size-4" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <form onSubmit={submit} className="flex gap-2">
-        <Input
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          maxLength={MAX_COMMENT_LENGTH}
-          placeholder="댓글 달기"
-          enterKeyHint="send"
-          className="flex-1"
-        />
-        <Button type="submit" disabled={pending || !body.trim()} className="shrink-0">
-          등록
-        </Button>
-      </form>
       {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
     </div>
   );

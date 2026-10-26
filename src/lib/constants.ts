@@ -52,12 +52,8 @@ export function formatTier(tier: Tier, division: Division | null) {
   return division && hasDivision(tier) ? `${TIER_LABEL[tier]} ${ROMAN[division]}` : TIER_LABEL[tier];
 }
 
-/** 이 인원 이상 모이면 메인 화면에 매치 카드가 생긴다 */
-export const MATCH_CARD_MIN = 5;
 /** 5대5 확정 인원 */
 export const MATCH_FULL = 10;
-/** 라인별 필요 인원 (양 팀 1명씩) */
-export const PER_LANE = 2;
 
 export const VOTE_LABEL = { mvp: "MVP", blame: "범인" } as const;
 /** 댓글 최대 길이 */
@@ -74,9 +70,3 @@ export const STAKE_PRESETS = ["진 팀이 치킨 쏘기", "진 팀이 피자 쏘
 
 export const isLane = (v: unknown): v is Lane => typeof v === "string" && (LANES as readonly string[]).includes(v);
 export const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS as readonly string[]).includes(v);
-
-export function countByLane(lanes: (Lane | null)[]): Record<Lane, number> {
-  const counts = Object.fromEntries(LANES.map((l) => [l, 0])) as Record<Lane, number>;
-  for (const lane of lanes) if (lane) counts[lane]++;
-  return counts;
-}

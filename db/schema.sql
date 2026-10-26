@@ -69,27 +69,39 @@ create trigger users_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------
--- schedules : 날짜별 참여 응답 (유저당 하루 1건, 참여 시 라인 '딱 1개')
+-- schedules : 날짜별 참여 응답 + 티켓 자리 (유저당 하루 1건)
+--   - 참여(join)만 하고 자리를 안 고르면 team/lane 은 null ("자리 미정")
+--   - 티켓에서 칸을 고르면 team(1팀=blue, 2팀=red) + lane 이 채워진다
+--   - 한 날짜의 같은 팀·라인 칸에는 한 명만 (schedules_slot_key)
 -- ---------------------------------------------------------------------
 create table if not exists public.schedules (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references public.users (id) on delete cascade,
   play_date   date not null,
   status      text not null check (status in ('join', 'decline')),
+  team        text check (team in ('blue', 'red')),
   lane        text check (lane in ('top', 'jungle', 'mid', 'adc', 'support')),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
 
-  constraint schedules_user_date_key unique (user_id, play_date),
-  -- 참여(join)면 라인 필수 1개, 불참(decline)이면 라인 없음
-  constraint schedules_lane_matches_status check (
-    (status = 'join' and lane is not null) or
-    (status = 'decline' and lane is null)
-  )
+  constraint schedules_user_date_key unique (user_id, play_date)
+);
+
+-- 이전 버전 스키마로 만든 DB 에도 적용 (재실행 안전)
+alter table public.schedules add column if not exists team text check (team in ('blue', 'red'));
+alter table public.schedules drop constraint if exists schedules_lane_matches_status;
+alter table public.schedules drop constraint if exists schedules_slot_check;
+-- 불참이면 자리 없음 / 팀이 있으면 라인도 있어야 함
+alter table public.schedules add constraint schedules_slot_check check (
+  (status = 'decline' and team is null and lane is null) or
+  (status = 'join' and (team is null or lane is not null))
 );
 
 create index if not exists schedules_play_date_idx
   on public.schedules (play_date);
+
+create unique index if not exists schedules_slot_key
+  on public.schedules (play_date, team, lane) where team is not null;
 
 drop trigger if exists schedules_set_updated_at on public.schedules;
 create trigger schedules_set_updated_at
@@ -98,7 +110,7 @@ create trigger schedules_set_updated_at
 
 -- ---------------------------------------------------------------------
 -- match_settings : 날짜별 매치 카드 설정 (방식/판돈, 마지막 수정자)
---   - 카드 자체는 "참여자 5명 이상"이면 자동 노출되므로 별도 행이 필요 없다.
+--   - 티켓 자체는 참여자가 1명이라도 있으면 자동 노출되므로 별도 행이 필요 없다.
 --   - 누군가 방식/판돈을 수정하는 순간 upsert 된다.
 -- ---------------------------------------------------------------------
 create table if not exists public.match_settings (
@@ -119,7 +131,7 @@ create trigger match_settings_set_updated_at
 
 -- ---------------------------------------------------------------------
 -- match_results : 관리자가 '종료' 처리한 매치 (행이 있으면 종료 상태)
---   - 종료 시 1팀/2팀 배정과 승리팀을 기록하고 (값: blue = 1팀, red = 2팀), 이때부터 투표/댓글/스크린샷이 열린다
+--   - 종료 시 티켓의 1팀/2팀 자리를 그대로 기록하고 승리팀을 저장 (값: blue = 1팀, red = 2팀), 이때부터 투표/댓글/스크린샷이 열린다
 -- ---------------------------------------------------------------------
 create table if not exists public.match_results (
   play_date    date primary key,
@@ -128,7 +140,7 @@ create table if not exists public.match_results (
   finished_at  timestamptz not null default now()
 );
 
--- 종료 시점의 팀 배정 (5대5)
+-- 종료 시점의 팀 배정 스냅샷 (5대5). 투표 후보/투표권 판단에 쓴다
 create table if not exists public.match_players (
   play_date  date not null references public.match_results (play_date) on delete cascade,
   user_id    uuid not null references public.users (id) on delete cascade,
@@ -137,7 +149,7 @@ create table if not exists public.match_players (
 );
 
 -- ---------------------------------------------------------------------
--- match_comments : 종료된 매치의 댓글
+-- match_comments : 티켓 댓글 (경기 전 조율 ~ 경기 후 수다)
 -- ---------------------------------------------------------------------
 create table if not exists public.match_comments (
   id          uuid primary key default gen_random_uuid(),

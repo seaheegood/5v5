@@ -3,7 +3,7 @@ import { memoryRepo } from "./memory";
 import { postgresRepo } from "./postgres";
 import type { Repo } from "./types";
 
-export { DuplicateNicknameError } from "./types";
+export { DuplicateNicknameError, SlotTakenError } from "./types";
 
 /** npm run dev:mock → DB 없이 인메모리 저장소 사용 (개발 서버에서만, production 에서는 항상 꺼짐) */
 export const MOCK_DB = process.env.MOCK_DB === "1" && process.env.NODE_ENV !== "production";

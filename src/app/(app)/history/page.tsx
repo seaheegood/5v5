@@ -2,12 +2,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { MatchCard } from "@/components/match/match-card";
 import { requireUser } from "@/lib/auth";
-import { getMatchCards } from "@/lib/data";
+import { getMatchCards, getUsers } from "@/lib/data";
 
-/** 지난 매치 (최근 순, 보기 전용) */
+/** 지난 매치 (최근 순). 자리 수정은 관리자만 */
 export default async function HistoryPage() {
   const me = await requireUser();
-  const { cards } = await getMatchCards("past", me.id);
+  const [cards, users] = await Promise.all([getMatchCards("past", me.id), me.is_admin ? getUsers() : []]);
+  const members = users.map(({ id, nickname }) => ({ id, nickname }));
 
   return (
     <div className="flex flex-col gap-5">
@@ -20,7 +21,9 @@ export default async function HistoryPage() {
       {cards.length === 0 ? (
         <p className="py-10 text-center text-muted-foreground">이전 매치 없음</p>
       ) : (
-        cards.map((card) => <MatchCard key={card.date} card={card} me={{ id: me.id, isAdmin: me.is_admin }} past />)
+        cards.map((card) => (
+          <MatchCard key={card.date} card={card} me={{ id: me.id, isAdmin: me.is_admin }} members={members} past />
+        ))
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import { hashPin } from "../pin";
 import type { PublicUser, Schedule, ScheduleStatus, Team, VoteKind } from "../types";
 import {
   DuplicateNicknameError,
+  SlotTakenError,
   type CommentRow,
   type PlayerRow,
   type Repo,
@@ -21,7 +22,14 @@ import {
  */
 
 type UserRow = PublicUser & { pin_hash: string; failed_pin_attempts: number; locked_until: string | null };
-type ScheduleRow = { id: string; user_id: string; play_date: string; status: ScheduleStatus; lane: Lane | null };
+type ScheduleRow = {
+  id: string;
+  user_id: string;
+  play_date: string;
+  status: ScheduleStatus;
+  team: Team | null;
+  lane: Lane | null;
+};
 type MatchSettingsRow = { play_date: string; match_format: string; stake: string; updated_by: string | null; updated_at: string };
 type MatchResultRow = { play_date: string; winner: Team; finished_by: string | null };
 type MemComment = { id: string; play_date: string; user_id: string | null; body: string; created_at: string };
@@ -69,24 +77,33 @@ function seed(): Store {
 
   const today = todayKST();
   const schedules: ScheduleRow[] = [];
-  const add = (diff: number, entries: [number, Lane | null][]) => {
-    for (const [i, lane] of entries)
+  // [멤버 번호, 팀, 라인] = 자리 있음 / [멤버 번호, "join"] = 자리 미정 / [멤버 번호, "decline"] = 불참
+  type Seed = [number, Team, Lane] | [number, "join" | "decline"];
+  const add = (diff: number, entries: Seed[]) => {
+    for (const [i, a, lane] of entries)
       schedules.push({
         id: randomUUID(),
         user_id: users[i].id,
         play_date: addDays(today, diff),
-        status: lane ? "join" : "decline",
-        lane,
+        status: a === "decline" ? "decline" : "join",
+        team: a === "blue" || a === "red" ? a : null,
+        lane: lane ?? null,
       });
   };
-  const ten: [number, Lane][] = [
-    [10, "top"], [5, "top"], [1, "jungle"], [6, "jungle"], [2, "mid"],
-    [0, "mid"], [3, "adc"], [7, "adc"], [4, "support"], [8, "support"],
+  // 1팀(blue) = 서말파·조리신·박아리·이징크스·최쓰레쉬 / 2팀(red) = 정다리우스·한니달리·김가렌·윤이즈·강룰루
+  const ten: Seed[] = [
+    [10, "blue", "top"], [5, "red", "top"], [1, "blue", "jungle"], [6, "red", "jungle"], [2, "blue", "mid"],
+    [0, "red", "mid"], [3, "blue", "adc"], [7, "red", "adc"], [4, "blue", "support"], [8, "red", "support"],
   ];
   add(-7, ten); // 지난 매치 (종료됨)
-  add(0, ten); // 오늘 매치 (10명, 아직 종료 전 → 관리자 종료 처리 확인용)
-  add(1, [[0, "top"], [1, "jungle"], [2, "mid"], [3, "adc"], [4, "support"], [5, "top"], [6, "jungle"], [7, "adc"], [9, null]]);
-  add(2, [[1, "jungle"], [2, "mid"], [8, "support"]]);
+  add(0, ten); // 오늘 매치 (10자리 다 참, 아직 종료 전 → 관리자 종료 확인용)
+  // 내일: 7자리 + 자리 미정 2명 + 불참 1명 (김가렌은 아직 응답 없음 → 빈 칸 들어가기 확인용)
+  add(1, [
+    [10, "blue", "top"], [1, "blue", "jungle"], [7, "blue", "adc"], [4, "blue", "support"],
+    [6, "red", "jungle"], [2, "red", "mid"], [3, "red", "adc"],
+    [5, "join"], [9, "join"], [8, "decline"],
+  ]);
+  add(2, [[1, "blue", "jungle"], [2, "join"], [8, "red", "support"]]);
   add(8, ten);
 
   const settings: MatchSettingsRow[] = [
@@ -94,15 +111,10 @@ function seed(): Store {
     { play_date: addDays(today, 1), match_format: "3판 2선승제", stake: "진 팀이 치킨 쏘기", updated_by: users[1].id, updated_at: now },
   ];
 
-  // 지난 매치 종료 처리: 라인별 첫 번째 = 1팀(blue), 두 번째 = 2팀(red), 1팀 승
+  // 지난 매치 종료 처리: 1팀 승, 자리 그대로 스냅샷
   const lastWeek = addDays(today, -7);
   const results: MatchResultRow[] = [{ play_date: lastWeek, winner: "blue", finished_by: users[0].id }];
-  const players: PlayerRow[] = ten.map(([i], n) => ({
-    play_date: lastWeek,
-    user_id: users[i].id,
-    team: n % 2 === 0 ? "blue" : "red",
-  }));
-  // 1팀(승) = 서말파·조리신·박아리·이징크스·최쓰레쉬 / 2팀(패) = 정다리우스·한니달리·김가렌·윤이즈·강룰루
+  const players: PlayerRow[] = ten.map(([i, team]) => ({ play_date: lastWeek, user_id: users[i].id, team: team as Team }));
 
   // 지난 매치 투표 (MVP 는 1팀에서, 범인은 2팀에서)
   const vote = (voter: number, kind: VoteKind, target: number): VoteRow => ({
@@ -115,9 +127,20 @@ function seed(): Store {
     vote(0, "mvp", 2), vote(1, "mvp", 2), vote(5, "mvp", 2), vote(3, "mvp", 10), vote(4, "mvp", 10),
     vote(1, "blame", 8), vote(2, "blame", 8), vote(3, "blame", 6),
   ];
+  const comment = (date: string, user: number, body: string, minutesAgo: number): MemComment => ({
+    id: randomUUID(),
+    play_date: date,
+    user_id: users[user].id,
+    body,
+    created_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+  });
+  const tomorrow = addDays(today, 1);
   const comments: MemComment[] = [
-    { id: randomUUID(), play_date: lastWeek, user_id: users[8].id, body: "다음엔 진짜 잘할게요...", created_at: now },
-    { id: randomUUID(), play_date: lastWeek, user_id: users[2].id, body: "미드 차이 ㅎㅎ", created_at: now },
+    comment(lastWeek, 8, "다음엔 진짜 잘할게요...", 9000),
+    comment(lastWeek, 2, "미드 차이 ㅎㅎ", 8990),
+    comment(tomorrow, 1, "미드 누가 와요?? 1팀 미드 비었어요", 90),
+    comment(tomorrow, 2, "전 2팀 미드 먹었습니다 ㅎ", 80),
+    comment(tomorrow, 5, "탑 둘 다 찼네.. 서폿 가도 됨?", 60),
   ];
 
   return { users, schedules, settings, results, players, votes, comments, screenshots: [] };
@@ -233,8 +256,27 @@ export const memoryRepo: Repo = {
 
   async upsertSchedule(input) {
     const existing = store().schedules.find((s) => s.user_id === input.user_id && s.play_date === input.play_date);
-    if (existing) Object.assign(existing, { status: input.status, lane: input.lane });
-    else store().schedules.push({ id: randomUUID(), ...input });
+    if (!existing) store().schedules.push({ id: randomUUID(), ...input, team: null, lane: null });
+    else {
+      existing.status = input.status;
+      if (input.status === "decline") Object.assign(existing, { team: null, lane: null });
+    }
+  },
+
+  async takeSlot(input) {
+    const rows = store().schedules;
+    const taken = rows.find(
+      (s) => s.play_date === input.play_date && s.team === input.team && s.lane === input.lane && s.user_id !== input.user_id,
+    );
+    if (taken) throw new SlotTakenError();
+    const existing = rows.find((s) => s.user_id === input.user_id && s.play_date === input.play_date);
+    if (existing) Object.assign(existing, { status: "join", team: input.team, lane: input.lane });
+    else rows.push({ id: randomUUID(), ...input, status: "join" });
+  },
+
+  async clearSlot(userId, date) {
+    const existing = store().schedules.find((s) => s.user_id === userId && s.play_date === date);
+    if (existing) Object.assign(existing, { team: null, lane: null });
   },
 
   async deleteSchedule(userId, date) {

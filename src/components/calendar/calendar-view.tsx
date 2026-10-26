@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { MATCH_CARD_MIN, MATCH_FULL } from "@/lib/constants";
+import { MATCH_FULL } from "@/lib/constants";
 import { monthGrid, shiftMonth, weekday } from "@/lib/date";
 import type { PublicUser, Schedule } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -83,6 +83,7 @@ export function CalendarView({
 
           const list = byDate.get(date) ?? [];
           const joinCount = list.filter((s) => s.status === "join").length;
+          const full = list.filter((s) => s.status === "join" && s.team && s.lane).length >= MATCH_FULL;
           const mine = list.find((s) => s.user_id === me.id);
           const day = weekday(date);
 
@@ -94,11 +95,7 @@ export function CalendarView({
               aria-label={`${month}월 ${Number(date.slice(8))}일, 참여 ${joinCount}명`}
               className={cn(
                 "relative flex h-16 flex-col items-center gap-0.5 rounded-xl border-2 border-transparent pt-1.5 transition-transform active:scale-95",
-                joinCount >= MATCH_FULL
-                  ? "bg-success/25"
-                  : joinCount >= MATCH_CARD_MIN
-                    ? "bg-primary/20"
-                    : joinCount > 0 && "bg-muted/70",
+                full ? "bg-success/25" : joinCount > 0 && "bg-primary/20",
                 date === today && "border-primary",
                 date < today && "opacity-40",
               )}
@@ -116,11 +113,7 @@ export function CalendarView({
                 <span
                   className={cn(
                     "text-[11px] font-bold tabular-nums",
-                    joinCount >= MATCH_FULL
-                      ? "text-success"
-                      : joinCount >= MATCH_CARD_MIN
-                        ? "text-primary"
-                        : "text-muted-foreground",
+                    full ? "text-success" : "text-primary",
                   )}
                 >
                   {joinCount}명
@@ -140,13 +133,13 @@ export function CalendarView({
       {/* 범례 */}
       <ul className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-card p-4 text-sm text-muted-foreground">
         <li className="flex items-center gap-2">
-          <span className="size-4 rounded bg-primary/20" /> {MATCH_CARD_MIN}명 이상
+          <span className="size-4 rounded bg-primary/20" /> 티켓 있음
         </li>
         <li className="flex items-center gap-2">
-          <span className="size-4 rounded bg-success/25" /> {MATCH_FULL}명 확정
+          <span className="size-4 rounded bg-success/25" /> 10자리 확정
         </li>
         <li className="flex items-center gap-2">
-          <LaneIcon lane="mid" className="size-4" /> 내 라인
+          <LaneIcon lane="mid" className="size-4" /> 내 자리 라인
         </li>
         <li className="flex items-center gap-2">
           <span className="ml-1 size-2 rounded-full bg-destructive" /> 불참

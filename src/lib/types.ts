@@ -20,6 +20,8 @@ export type Schedule = {
   user_id: string;
   play_date: string; // YYYY-MM-DD
   status: ScheduleStatus;
+  /** 티켓 자리. 자리 미정이면 둘 다 null */
+  team: Team | null;
   lane: Lane | null;
   user: Pick<PublicUser, "id" | "nickname" | "tier" | "tier_division">;
 };
@@ -29,7 +31,9 @@ export type Participant = {
   nickname: string;
   tier: Tier;
   division: Division | null;
-  lane: Lane;
+  /** 티켓 자리. 자리 미정이면 둘 다 null */
+  team: Team | null;
+  lane: Lane | null;
 };
 
 export type MatchSettings = {
@@ -71,13 +75,14 @@ export type MatchResults = {
   /** 내가 투표한 대상 */
   myVotes: Partial<Record<VoteKind, string>>;
   screenshots: Screenshot[];
-  comments: Comment[];
 };
 
 export type MatchCardData = {
   date: string;
   participants: Participant[];
   settings: MatchSettings | null;
+  /** 티켓 댓글 (항상 열림) */
+  comments: Comment[];
   /** 종료된 매치만 존재 */
   results: MatchResults | null;
 };

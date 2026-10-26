@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import Link from "next/link";
 import { X } from "lucide-react";
 import { deleteSchedule, saveSchedule } from "@/app/actions/schedule";
-import { countByLane, type Lane } from "@/lib/constants";
-import { formatKoreanDate } from "@/lib/date";
+import { LANE_LABEL, TEAM_LABEL } from "@/lib/constants";
+import { formatKoreanDate, todayKST } from "@/lib/date";
 import { toParticipants } from "@/lib/participants";
 import type { PublicUser, Schedule, ScheduleStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PlayerRow } from "../icons/player-row";
-import { LanePicker } from "../lane-picker";
 import { Button } from "../ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "../ui/drawer";
 
@@ -92,7 +92,7 @@ function SheetBody({
             target={target}
             isSelf={target.id === me.id}
             existing={schedules.find((s) => s.user_id === target.id)}
-            schedules={schedules}
+            hasTicket={joined.length > 0}
             onSaved={onDone}
           />
         )}
@@ -108,51 +108,21 @@ function ScheduleForm({
   target,
   isSelf,
   existing,
-  schedules,
+  hasTicket,
   onSaved,
 }: {
   date: string;
   target: PublicUser;
   isSelf: boolean;
   existing?: Schedule;
-  schedules: Schedule[];
+  /** 이날 참여자가 있어 티켓이 있는지 */
+  hasTicket: boolean;
   onSaved: () => void;
 }) {
   const [status, setStatus] = useState<ScheduleStatus | null>(existing?.status ?? null);
-  const [lane, setLane] = useState<Lane | null>(existing?.lane ?? null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  // 대상 본인을 제외한 라인별 인원 + 지금 고른 라인
-  const othersCounts = useMemo(
-    () => countByLane(schedules.filter((s) => s.status === "join" && s.user_id !== target.id).map((s) => s.lane)),
-    [schedules, target.id],
-  );
-  const counts = useMemo(() => {
-    const next = { ...othersCounts };
-    if (status === "join" && lane) next[lane]++;
-    return next;
-  }, [othersCounts, status, lane]);
-
-  // ── 라인 1개 확정 로직 ──────────────────────────────
-  // * 참여 선택 시: 주 라인이 1개뿐이면 자동 선택, 아니면 직접 고르게 함
-  // * 불참 선택 시: 라인 해제
-  // * 라인을 먼저 누르면: 자동으로 '참여' 처리
-  // * 라인은 라디오 방식이라 항상 0개 또는 1개
-  const pickStatus = (next: ScheduleStatus) => {
-    setError(null);
-    setStatus(next);
-    if (next === "decline") setLane(null);
-    else if (!lane && target.preferred_lanes.length === 1) setLane(target.preferred_lanes[0]);
-  };
-  const pickLane = (next: Lane) => {
-    setError(null);
-    setStatus("join");
-    setLane(next);
-  };
-
-  const canSave = status === "decline" || (status === "join" && lane !== null);
-  const unchanged = existing?.status === status && existing?.lane === lane;
+  const seat = existing?.status === "join" && existing.team && existing.lane ? existing : null;
 
   const run = (action: () => Promise<{ ok: boolean; error?: string }>) =>
     startTransition(async () => {
@@ -161,64 +131,54 @@ function ScheduleForm({
       else setError(result.error ?? "실패했어요.");
     });
 
-  const save = () =>
-    run(() =>
-      saveSchedule({ date, status: status!, lane: status === "join" ? lane : null, targetUserId: target.id }),
-    );
+  const save = () => run(() => saveSchedule({ date, status: status!, targetUserId: target.id }));
   const remove = () => run(() => deleteSchedule({ date, targetUserId: target.id }));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-3">
         <h3 className="text-lg font-bold">{isSelf ? "참여 여부" : `${target.nickname} 참여 여부`}</h3>
         <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            aria-pressed={status === "join"}
-            onClick={() => pickStatus("join")}
-            className={cn(
-              "h-16 rounded-xl border-2 text-lg font-bold transition-all active:scale-95",
-              status === "join" ? "border-success bg-success/15 text-success" : "border-border text-muted-foreground",
-            )}
-          >
-            참여
-          </button>
-          <button
-            type="button"
-            aria-pressed={status === "decline"}
-            onClick={() => pickStatus("decline")}
-            className={cn(
-              "h-16 rounded-xl border-2 text-lg font-bold transition-all active:scale-95",
-              status === "decline"
-                ? "border-destructive bg-destructive/15 text-destructive"
-                : "border-border text-muted-foreground",
-            )}
-          >
-            불참
-          </button>
+          {(["join", "decline"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={status === value}
+              onClick={() => {
+                setError(null);
+                setStatus(value);
+              }}
+              className={cn(
+                "h-16 rounded-xl border-2 text-lg font-bold transition-all active:scale-95",
+                status !== value
+                  ? "border-border text-muted-foreground"
+                  : value === "join"
+                    ? "border-success bg-success/15 text-success"
+                    : "border-destructive bg-destructive/15 text-destructive",
+              )}
+            >
+              {value === "join" ? "참여" : "불참"}
+            </button>
+          ))}
         </div>
-      </section>
-
-      <section className={cn("flex flex-col gap-3 transition-opacity", status === "decline" && "opacity-40")}>
-        <h3 className="text-lg font-bold">라인</h3>
-        <LanePicker
-          value={lane}
-          onChange={pickLane}
-          preferred={target.preferred_lanes}
-          counts={counts}
-          disabled={pending}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          <span className="mr-1 inline-block size-1.5 rounded-full bg-primary align-middle" /> 주 라인
+        <p className="text-sm text-muted-foreground">
+          {seat
+            ? `지금 ${TEAM_LABEL[seat.team!]} ${LANE_LABEL[seat.lane!]} 자리에 있어요.${status === "decline" ? " 불참하면 자리도 비워져요." : ""}`
+            : "팀과 라인은 티켓에서 빈 칸을 눌러 정해요."}
         </p>
       </section>
 
       {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
 
       <div className="flex flex-col gap-2">
-        <Button size="lg" onClick={save} disabled={!canSave || unchanged || pending}>
-          {pending ? "저장 중" : status === "join" && !lane ? "라인 선택" : "저장"}
+        <Button size="lg" onClick={save} disabled={!status || status === existing?.status || pending}>
+          {pending ? "저장 중" : "저장"}
         </Button>
+        {hasTicket && (
+          <Button asChild variant="secondary">
+            <Link href={`${date < todayKST() ? "/history" : "/"}#ticket-${date}`}>티켓에서 자리 고르기</Link>
+          </Button>
+        )}
         {existing && (
           <Button variant="ghost" onClick={remove} disabled={pending} className="text-muted-foreground">
             응답 삭제

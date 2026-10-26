@@ -8,6 +8,13 @@ export class DuplicateNicknameError extends Error {
   }
 }
 
+/** 그 칸에 이미 다른 사람이 있음 (schedules_slot_key 위반) */
+export class SlotTakenError extends Error {
+  constructor() {
+    super("slot taken");
+  }
+}
+
 export type AuthRow = {
   id: string;
   pin_hash: string;
@@ -87,7 +94,12 @@ export interface Repo {
 
   // ── schedules ─────────────────────────
   listSchedules(range: { from?: string; to?: string }): Promise<Schedule[]>;
-  upsertSchedule(input: { user_id: string; play_date: string; status: ScheduleStatus; lane: Lane | null }): Promise<void>;
+  /** 참여/불참. 불참이면 자리도 비우고, 참여면 기존 자리는 유지 */
+  upsertSchedule(input: { user_id: string; play_date: string; status: ScheduleStatus }): Promise<void>;
+  /** 티켓 칸에 들어가기 (참여 처리 포함, 다른 칸에 있었으면 이동). @throws SlotTakenError */
+  takeSlot(input: { user_id: string; play_date: string; team: Team; lane: Lane }): Promise<void>;
+  /** 자리 비우기 (참여는 유지 → 자리 미정) */
+  clearSlot(userId: string, date: string): Promise<void>;
   deleteSchedule(userId: string, date: string): Promise<void>;
   participantIds(date: string): Promise<string[]>;
 
