@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { PressFeedback } from "@/components/layout/press-feedback";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,7 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
       </head>
-      <body className="min-h-dvh font-sans">{children}</body>
+      <body className="min-h-dvh font-sans">
+        <PressFeedback />
+        {children}
+      </body>
     </html>
   );
 }

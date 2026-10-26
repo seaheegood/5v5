@@ -2,7 +2,8 @@ import "server-only";
 import { addDays, todayKST } from "./date";
 import { toParticipants } from "./participants";
 import { repo } from "./repo";
-import type { MatchCardData, MatchResults, PublicUser, Schedule } from "./types";
+import type { MatchCardData, MatchResults, PlayerProfile, PlayerRecord, PublicUser, Schedule, VoteKind } from "./types";
+import type { RecordRow } from "./repo/types";
 
 export function getUsers(): Promise<PublicUser[]> {
   return repo.listUsers();
@@ -62,7 +63,7 @@ async function loadCards(range: { from?: string; to?: string }, meId: string): P
       settings: row
         ? {
             matchFormat: row.match_format,
-            stake: row.stake,
+            stake: row.stake_amount,
             updatedAt: row.updated_at,
             updatedByNickname: row.updater_nickname,
           }
@@ -118,4 +119,56 @@ async function getMatchResults(candidates: string[], meId: string): Promise<Map<
   }
 
   return map;
+}
+
+function toRecord(rows: RecordRow[]): PlayerRecord {
+  const matches = rows.map((r) => {
+    const won = r.team === r.winner;
+    return {
+      date: r.play_date,
+      team: r.team,
+      won,
+      profit: r.stake_amount === null ? null : won ? r.stake_amount : -r.stake_amount,
+    };
+  });
+  return {
+    wins: matches.filter((m) => m.won).length,
+    losses: matches.filter((m) => !m.won).length,
+    profit: matches.reduce((sum, m) => sum + (m.profit ?? 0), 0),
+    matches,
+  };
+}
+
+/**
+ * 한 멤버의 통산 전적/수익 + MVP/범인 횟수 (종료된 매치 기준, 최근 경기 먼저).
+ * MVP/범인은 그 경기 최다 득표자 (동점이면 모두, 표가 없으면 없음).
+ */
+export async function getPlayerProfile(userId: string): Promise<PlayerProfile> {
+  const record = toRecord(await repo.listRecords(userId));
+  const votes = await repo.listVotes(record.matches.map((m) => m.date));
+
+  const awardOf = (date: string): VoteKind | null => {
+    for (const kind of ["mvp", "blame"] as const) {
+      const tally = new Map<string, number>();
+      for (const v of votes) if (v.play_date === date && v.kind === kind) tally.set(v.target_id, (tally.get(v.target_id) ?? 0) + 1);
+      const max = Math.max(0, ...tally.values());
+      if (max > 0 && tally.get(userId) === max) return kind;
+    }
+    return null;
+  };
+
+  const matches = record.matches.map((m) => ({ ...m, award: awardOf(m.date) }));
+  return {
+    ...record,
+    matches,
+    mvp: matches.filter((m) => m.award === "mvp").length,
+    blame: matches.filter((m) => m.award === "blame").length,
+  };
+}
+
+/** 전체 멤버 전적 (응원 목록용): userId → 기록 */
+export async function getAllRecords(): Promise<Map<string, PlayerRecord>> {
+  const byUser = new Map<string, RecordRow[]>();
+  for (const r of await repo.listRecords()) byUser.set(r.user_id, [...(byUser.get(r.user_id) ?? []), r]);
+  return new Map([...byUser].map(([id, rows]) => [id, toRecord(rows)]));
 }

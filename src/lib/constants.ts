@@ -66,7 +66,20 @@ export const TEAM_LABEL = { blue: "1팀", red: "2팀" } as const;
 export const MAX_SCREENSHOTS = 10;
 
 export const MATCH_FORMAT_PRESETS = ["단판", "3판 2선승제", "5판 3선승제", "칼바람 내전"];
-export const STAKE_PRESETS = ["진 팀이 치킨 쏘기", "진 팀이 피자 쏘기", "커피 내기", "명예만 걸기"];
+/** 1인당 판돈(원) 빠른 선택. 0 = 없음 */
+export const STAKE_PRESETS = [0, 30000, 50000, 70000];
+export const MAX_STAKE = 1_000_000;
+
+/** 5000 → "5,000원", 0 → "없음", null → "미정" */
+export function formatStake(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined) return "미정";
+  return amount === 0 ? "없음" : `${amount.toLocaleString("ko-KR")}원`;
+}
+
+/** 수익 표시: +5,000원 / -3,000원 / 0원 */
+export function formatProfit(amount: number): string {
+  return `${amount > 0 ? "+" : amount < 0 ? "-" : ""}${Math.abs(amount).toLocaleString("ko-KR")}원`;
+}
 
 export const isLane = (v: unknown): v is Lane => typeof v === "string" && (LANES as readonly string[]).includes(v);
 export const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS as readonly string[]).includes(v);

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { updateMatchSettings } from "@/app/actions/match";
-import { MATCH_FORMAT_PRESETS, STAKE_PRESETS } from "@/lib/constants";
+import { MATCH_FORMAT_PRESETS, MAX_STAKE, STAKE_PRESETS, formatStake } from "@/lib/constants";
 import { formatKoreanDate } from "@/lib/date";
 import type { MatchSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,17 @@ import {
   DrawerTrigger,
 } from "../ui/drawer";
 
-function Chips({ options, value, onPick }: { options: string[]; value: string; onPick: (v: string) => void }) {
+function Chips<T extends string | number>({
+  options,
+  value,
+  onPick,
+  label = String,
+}: {
+  options: T[];
+  value: T;
+  onPick: (v: T) => void;
+  label?: (v: T) => string;
+}) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((option) => (
@@ -32,18 +42,22 @@ function Chips({ options, value, onPick }: { options: string[]; value: string; o
             value === option ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground",
           )}
         >
-          {option}
+          {label(option)}
         </button>
       ))}
     </div>
   );
 }
 
+/** 입력칸 문자열 → 판돈 숫자 (숫자만 남김). 비어 있으면 NaN */
+const parseStake = (text: string) => (text === "" ? Number.NaN : Number(text));
+
 /** 매치 방식/판돈 수정 바텀 시트 (누구나 수정 가능) */
 export function MatchSettingsSheet({ date, settings }: { date: string; settings: MatchSettings | null }) {
   const [open, setOpen] = useState(false);
   const [matchFormat, setMatchFormat] = useState(settings?.matchFormat ?? MATCH_FORMAT_PRESETS[0]);
-  const [stake, setStake] = useState(settings?.stake ?? "");
+  // 입력칸은 숫자 문자열로 다룬다 ("" = 아직 안 정함)
+  const [stake, setStake] = useState(settings?.stake?.toString() ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -51,7 +65,7 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
     if (next) {
       // 열 때마다 최신 서버 값으로 초기화
       setMatchFormat(settings?.matchFormat ?? MATCH_FORMAT_PRESETS[0]);
-      setStake(settings?.stake ?? "");
+      setStake(settings?.stake?.toString() ?? "");
       setError(null);
     }
     setOpen(next);
@@ -59,7 +73,7 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
 
   const save = () =>
     startTransition(async () => {
-      const result = await updateMatchSettings({ date, matchFormat, stake });
+      const result = await updateMatchSettings({ date, matchFormat, stake: parseStake(stake) });
       if (result.ok) setOpen(false);
       else setError(result.error);
     });
@@ -95,23 +109,35 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
 
           <section className="flex flex-col gap-3">
             <label htmlFor="match-stake" className="font-bold">
-              판돈
+              판돈 <span className="text-sm font-normal text-muted-foreground">(1인당, 이긴 팀 +, 진 팀 -)</span>
             </label>
-            <Chips options={STAKE_PRESETS} value={stake} onPick={setStake} />
-            <Input
-              id="match-stake"
-              value={stake}
-              maxLength={50}
-              onChange={(e) => setStake(e.target.value)}
-              placeholder="직접 입력"
+            <Chips
+              options={STAKE_PRESETS}
+              value={parseStake(stake)}
+              onPick={(v) => setStake(String(v))}
+              label={formatStake}
             />
+            <div className="relative">
+              <Input
+                id="match-stake"
+                inputMode="numeric"
+                value={stake === "" ? "" : Number(stake).toLocaleString("ko-KR")}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+                  setStake(digits === "" ? "" : String(Math.min(Number(digits), MAX_STAKE)));
+                }}
+                placeholder="직접 입력 (숫자만)"
+                className="pr-10 text-right tabular-nums"
+              />
+              <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-muted-foreground">원</span>
+            </div>
           </section>
 
           {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
         </div>
 
         <DrawerFooter>
-          <Button size="lg" onClick={save} disabled={pending || !matchFormat.trim()}>
+          <Button size="lg" onClick={save} disabled={pending || !matchFormat.trim() || stake === ""}>
             {pending ? "저장 중" : "저장"}
           </Button>
         </DrawerFooter>
