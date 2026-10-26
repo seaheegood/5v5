@@ -26,7 +26,7 @@ export const TEAM_STYLE: Record<Team, { on: string; text: string }> = {
   red: { on: "border-rose-400 bg-rose-400/15 text-rose-400", text: "text-rose-400" },
 };
 
-/** 라인별로 첫 번째 = 블루, 두 번째 = 레드 로 미리 채워 둔다 (관리자가 수정) */
+/** 라인별로 첫 번째 = 1팀, 두 번째 = 2팀 으로 미리 채워 둔다 (관리자가 수정) */
 function autoAssign(participants: Participant[]): Record<string, Team> {
   const teams: Record<string, Team> = {};
   for (const lane of LANES) {

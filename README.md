@@ -2,9 +2,11 @@
 
 주말 롤 5대5 내전 일정을 잡는 모바일 웹앱.
 
-| 로그인 | 매치 | 달력 | 일정 등록 |
-| :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/login.png" width="200"> | <img src="docs/screenshots/match.png" width="200"> | <img src="docs/screenshots/calendar.png" width="200"> | <img src="docs/screenshots/sheet.png" width="200"> |
+| 로그인 | 매치 | 달력 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/login.png" width="220"> | <img src="docs/screenshots/match.png" width="220"> | <img src="docs/screenshots/calendar.png" width="220"> |
+| **일정 등록** | **매치 종료 (관리자)** | **결과 투표 · 댓글** |
+| <img src="docs/screenshots/sheet.png" width="220"> | <img src="docs/screenshots/finish.png" width="220"> | <img src="docs/screenshots/results.png" width="220"> |
 
 ## 기능
 
@@ -13,7 +15,7 @@
 - **프로필**: 티어와 디비전(I~IV)을 고르고, 가능한 라인은 여러 개 선택할 수 있습니다.
 - **달력**: 날짜를 누르면 참여 또는 불참과 라인 1개를 등록합니다.
 - **매치 카드**: 5명 이상 모인 날에 생깁니다. N/10 게이지와 라인별 인원이 보이고, 방식과 판돈은 누구나 수정할 수 있습니다.
-- **매치 종료**: 10명이 모인 매치를 관리자가 종료하면서 블루/레드 팀과 승리팀을 입력합니다.
+- **매치 종료**: 10명이 모인 매치를 관리자가 종료하면서 1팀/2팀 배정과 승리팀을 입력합니다.
 - **경기 결과**: 종료되면 이긴 팀에서 MVP, 진 팀에서 범인을 익명으로 투표하고, 댓글과 결과 스크린샷을 남길 수 있습니다.
 - **이전 매치**: 지난 매치는 메인 하단의 `이전 매치 보기`에서 볼 수 있습니다.
 - **관리자**: 멤버, 일정, 카드를 모두 수정하거나 삭제할 수 있습니다.

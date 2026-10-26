@@ -53,7 +53,7 @@ export async function finishMatch(input: {
   const blue = players.filter((p) => p.team === "blue").length;
   const red = players.filter((p) => p.team === "red").length;
   if (blue !== TEAM_SIZE || red !== TEAM_SIZE) {
-    return { ok: false, error: `블루 ${TEAM_SIZE}명, 레드 ${TEAM_SIZE}명을 정해 주세요. (지금 ${blue}:${red})` };
+    return { ok: false, error: `1팀 ${TEAM_SIZE}명, 2팀 ${TEAM_SIZE}명을 정해 주세요. (지금 ${blue}:${red})` };
   }
 
   await repo.finishMatch({ play_date: input.date, winner: input.winner, finished_by: me.id, players });

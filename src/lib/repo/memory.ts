@@ -94,7 +94,7 @@ function seed(): Store {
     { play_date: addDays(today, 1), match_format: "3판 2선승제", stake: "진 팀이 치킨 쏘기", updated_by: users[1].id, updated_at: now },
   ];
 
-  // 지난 매치 종료 처리: 라인별 첫 번째 = 블루, 두 번째 = 레드, 블루 승
+  // 지난 매치 종료 처리: 라인별 첫 번째 = 1팀(blue), 두 번째 = 2팀(red), 1팀 승
   const lastWeek = addDays(today, -7);
   const results: MatchResultRow[] = [{ play_date: lastWeek, winner: "blue", finished_by: users[0].id }];
   const players: PlayerRow[] = ten.map(([i], n) => ({
@@ -102,9 +102,9 @@ function seed(): Store {
     user_id: users[i].id,
     team: n % 2 === 0 ? "blue" : "red",
   }));
-  // 블루(승) = 서말파·조리신·박아리·이징크스·최쓰레쉬 / 레드(패) = 정다리우스·한니달리·김가렌·윤이즈·강룰루
+  // 1팀(승) = 서말파·조리신·박아리·이징크스·최쓰레쉬 / 2팀(패) = 정다리우스·한니달리·김가렌·윤이즈·강룰루
 
-  // 지난 매치 투표 (MVP 는 블루에서, 범인은 레드에서)
+  // 지난 매치 투표 (MVP 는 1팀에서, 범인은 2팀에서)
   const vote = (voter: number, kind: VoteKind, target: number): VoteRow => ({
     play_date: addDays(today, -7),
     voter_id: users[voter].id,
