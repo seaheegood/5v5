@@ -15,9 +15,7 @@ const IMAGE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": 
 const isTeam = (v: unknown): v is Team => v === "blue" || v === "red";
 
 function revalidate() {
-  revalidatePath("/");
-  revalidatePath("/history");
-  revalidatePath("/calendar");
+  revalidatePath("/", "layout"); // 메인/이전 매치/티켓 상세/달력 모두
 }
 
 /** 종료된 매치의 팀 배정 (userId → team). 종료 전이면 null */

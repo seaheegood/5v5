@@ -19,7 +19,9 @@ export function BottomNav({ isAdmin }: { isAdmin: boolean }) {
       <ul className="mx-auto flex max-w-lg">
         {items.map(({ href, label, icon: Icon }) => {
           const active =
-            href === "/" ? pathname === "/" || pathname.startsWith("/history") : pathname.startsWith(href);
+            href === "/"
+              ? pathname === "/" || pathname.startsWith("/history") || pathname.startsWith("/ticket")
+              : pathname.startsWith(href);
           return (
             <li key={href} className="flex-1">
               <Link

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { deleteSchedule, saveSchedule } from "@/app/actions/schedule";
 import { LANE_LABEL, TEAM_LABEL } from "@/lib/constants";
-import { formatKoreanDate, todayKST } from "@/lib/date";
+import { formatKoreanDate } from "@/lib/date";
 import { toParticipants } from "@/lib/participants";
 import type { PublicUser, Schedule, ScheduleStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -177,7 +177,7 @@ function ScheduleForm({
         </Button>
         {hasTicket && (
           <Button asChild variant="secondary">
-            <Link href={`${date < todayKST() ? "/history" : "/"}#ticket-${date}`}>티켓에서 자리 고르기</Link>
+            <Link href={`/ticket/${date}`}>티켓에서 자리 고르기</Link>
           </Button>
         )}
         {existing && (

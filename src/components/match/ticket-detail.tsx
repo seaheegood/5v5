@@ -1,7 +1,8 @@
 "use client";
 
 import { useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Trash2 } from "lucide-react";
 import { deleteMatch } from "@/app/actions/match";
 import { MATCH_FULL, TEAM_LABEL } from "@/lib/constants";
 import { formatKoreanDate, todayKST } from "@/lib/date";
@@ -18,52 +19,48 @@ import { SlotBoard } from "./slot-board";
 import { TEAM_STYLE } from "./team-style";
 
 /**
- * 티켓(매치 카드). 그날 참여자가 1명이라도 있으면 생긴다.
- * - 모집 중: 1팀/2팀 × 라인 10칸에 각자 들어가고, 댓글로 조율
+ * 티켓 상세 (/ticket/[date]).
+ * 상태·게이지 → 자리 10칸 → 방식·판돈 한 줄 → 결과(종료 후) → 댓글 → 관리자 버튼
+ * - 모집 중: 빈 칸에 들어가기, 댓글로 조율
  * - 10칸이 다 차면 확정 → 경기 당일부터 관리자가 승리팀을 골라 종료
  * - 종료: 자리 잠금 + 결과(스크린샷/MVP/범인)
- * - past(지난 매치): 관리자만 자리 수정 가능
+ * - 지난 날짜: 관리자만 자리 수정 가능
  */
-export function MatchCard({
+export function TicketDetail({
   card,
   me,
   members,
-  past = false,
 }: {
   card: MatchCardData;
   me: { id: string; isAdmin: boolean };
   /** 관리자에게만 전달: 칸에 다른 멤버 넣기용 */
   members: { id: string; nickname: string }[];
-  past?: boolean;
 }) {
+  const router = useRouter();
   const [deleting, startDelete] = useTransition();
+  const today = todayKST();
+  const past = card.date < today;
   const seated = seatedCount(card.participants);
   const remaining = MATCH_FULL - seated;
   const confirmed = remaining === 0;
   const results = card.results;
   const finished = results !== null;
   const locked = finished || (past && !me.isAdmin);
-  const canFinish = me.isAdmin && !finished && confirmed && card.date <= todayKST();
+  const canFinish = me.isAdmin && !finished && confirmed && card.date <= today;
 
   const onDelete = () => {
     if (!confirm(`${formatKoreanDate(card.date)} 티켓을 삭제할까요? (자리/댓글/투표/사진 모두 삭제)`)) return;
     startDelete(async () => {
       const result = await deleteMatch(card.date);
-      if (!result.ok) alert(result.error);
+      if (result.ok) router.replace(past ? "/history" : "/");
+      else alert(result.error);
     });
   };
 
   return (
-    <article
-      id={`ticket-${card.date}`}
-      className={cn(
-        "scroll-mt-20 rounded-2xl border-2 bg-card p-5 shadow-lg shadow-black/20",
-        confirmed && !finished && !past ? "border-success/60" : "border-border",
-        deleting && "opacity-50",
-      )}
-    >
+    <div className={cn("flex flex-col", deleting && "opacity-50")}>
       <header className="flex items-center justify-between gap-2">
-        <h2 className="text-xl font-extrabold">{formatKoreanDate(card.date)}</h2>
+        <h2 className="text-2xl font-extrabold">{formatKoreanDate(card.date)}</h2>
         <span
           className={cn(
             "shrink-0 rounded-full px-3 py-1 text-sm font-bold",
@@ -100,31 +97,42 @@ export function MatchCard({
         winner={results?.winner ?? null}
       />
 
-      {/* 세팅 */}
-      <section className="mt-3 rounded-xl bg-background/50 p-4">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-base">
-          <dt className="text-muted-foreground">방식</dt>
-          <dd className="font-semibold break-all">{card.settings?.matchFormat ?? "미정"}</dd>
-          <dt className="text-muted-foreground">판돈</dt>
-          <dd className="font-semibold break-all">{card.settings?.stake || "미정"}</dd>
-        </dl>
-        {(card.settings || (!past && !finished)) && (
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <p className="truncate text-sm text-muted-foreground">
-              {card.settings && `설정: ${card.settings.updatedByNickname ?? "탈퇴한 멤버"}`}
+      {/* 방식·판돈 한 줄 */}
+      <section className="mt-3 flex items-center gap-3 rounded-xl bg-card px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">
+            <span className="text-muted-foreground">방식</span>{" "}
+            <b>{card.settings?.matchFormat ?? "미정"}</b>
+            <span className="mx-1.5 text-muted-foreground">·</span>
+            <span className="text-muted-foreground">판돈</span> <b>{card.settings?.stake || "미정"}</b>
+          </p>
+          {card.settings && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              설정: {card.settings.updatedByNickname ?? "탈퇴한 멤버"}
             </p>
-            {!past && !finished && <MatchSettingsSheet date={card.date} settings={card.settings} />}
-          </div>
-        )}
+          )}
+        </div>
+        {!past && !finished && <MatchSettingsSheet date={card.date} settings={card.settings} />}
       </section>
+
+      {/* 종료된 매치는 결과가 길어서 댓글로 바로 가는 줄을 둔다 */}
+      {finished && (
+        <a href="#comments" className="mt-3 flex h-12 items-center justify-between rounded-xl bg-card px-4 font-bold">
+          댓글 {card.comments.length}
+          <span className="flex items-center gap-1 text-sm font-normal text-muted-foreground">
+            아래로 <ChevronDown className="size-4" />
+          </span>
+        </a>
+      )}
 
       {/* 결과: 관리자가 종료한 뒤 열림 (스크린샷/투표) */}
       {finished && (
-        <MatchResults date={card.date} participants={card.participants} results={results} me={me} defaultOpen={!past} />
+        <MatchResults date={card.date} participants={card.participants} results={results} me={me} defaultOpen />
       )}
 
-      {/* 댓글: 티켓이 생길 때부터 항상 */}
-      <Comments date={card.date} comments={card.comments} me={me} />
+      <div id="comments" className="scroll-mt-20">
+        <Comments date={card.date} comments={card.comments} me={me} />
+      </div>
 
       {/* 관리자 */}
       {me.isAdmin && (
@@ -146,6 +154,6 @@ export function MatchCard({
       {me.isAdmin && confirmed && !finished && !canFinish && (
         <p className="mt-2 text-center text-xs text-muted-foreground">경기 당일부터 종료할 수 있어요</p>
       )}
-    </article>
+    </div>
   );
 }

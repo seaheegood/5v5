@@ -46,7 +46,7 @@ export function Comments({ date, comments, me }: { date: string; comments: Comme
   };
 
   return (
-    <section className="mt-3 flex flex-col gap-2 rounded-xl bg-background/50 p-4">
+    <section className="mt-3 flex flex-col gap-2 rounded-xl bg-card p-4">
       <h4 className="font-bold">
         댓글 <span className="text-sm font-normal text-muted-foreground tabular-nums">{comments.length}</span>
       </h4>

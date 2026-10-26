@@ -23,7 +23,7 @@ export async function updateMatchSettings(input: {
 
   await repo.upsertSettings({ play_date: input.date, match_format: matchFormat, stake, updated_by: me.id });
 
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -35,8 +35,6 @@ export async function deleteMatch(date: string): Promise<ActionResult> {
 
   await removeImages(await repo.deleteMatch(date));
 
-  revalidatePath("/");
-  revalidatePath("/history");
-  revalidatePath("/calendar");
+  revalidatePath("/", "layout"); // 메인/이전 매치/티켓 상세/달력 모두
   return { ok: true };
 }

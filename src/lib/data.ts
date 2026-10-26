@@ -19,13 +19,24 @@ export async function getFinishedDates(dates: string[]): Promise<string[]> {
 }
 
 /**
- * 티켓(매치 카드) = 참여자가 1명이라도 있는 날.
+ * 티켓(매치 카드) 목록 = 참여자가 1명이라도 있는 날.
  * - upcoming: 오늘 포함 이후, 날짜 오름차순
  * - past: 어제까지, 최근 날짜 먼저
  */
 export async function getMatchCards(when: "upcoming" | "past", meId: string): Promise<MatchCardData[]> {
   const today = todayKST();
-  const schedules = await getSchedules(when === "upcoming" ? { from: today } : { to: addDays(today, -1) });
+  const range = when === "upcoming" ? { from: today } : { to: addDays(today, -1) };
+  const cards = await loadCards(range, meId);
+  return when === "past" ? cards.reverse() : cards;
+}
+
+/** 티켓 하나 (상세 화면). 그날 참여자가 없으면 null */
+export async function getTicket(date: string, meId: string): Promise<MatchCardData | null> {
+  return (await loadCards({ from: date, to: date }, meId))[0] ?? null;
+}
+
+async function loadCards(range: { from?: string; to?: string }, meId: string): Promise<MatchCardData[]> {
+  const schedules = await getSchedules(range);
 
   const byDate = new Map<string, Schedule[]>();
   for (const s of schedules) {
@@ -33,10 +44,7 @@ export async function getMatchCards(when: "upcoming" | "past", meId: string): Pr
     byDate.set(s.play_date, [...(byDate.get(s.play_date) ?? []), s]);
   }
 
-  const entries = [...byDate];
-  if (when === "past") entries.reverse();
-
-  const cardDates = entries.map(([date]) => date);
+  const cardDates = [...byDate.keys()];
 
   // 결과(투표/스크린샷)는 관리자가 종료 처리한 매치만, 댓글은 항상
   const [settings, results, comments] = await Promise.all([

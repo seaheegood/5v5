@@ -8,9 +8,7 @@ import { isValidDate, todayKST } from "@/lib/date";
 import type { ActionResult, PublicUser, ScheduleStatus, Team } from "@/lib/types";
 
 function revalidate() {
-  revalidatePath("/");
-  revalidatePath("/history");
-  revalidatePath("/calendar");
+  revalidatePath("/", "layout"); // 메인/이전 매치/티켓 상세/달력 모두
 }
 
 const isTeam = (v: unknown): v is Team => v === "blue" || v === "red";

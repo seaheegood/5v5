@@ -118,7 +118,7 @@ export function SlotBoard({
       </div>
 
       {unseated.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-background/50 px-3 py-2.5 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-card px-3 py-2.5 text-sm">
           <span className="shrink-0 font-bold text-muted-foreground">자리 미정</span>
           {unseated.map((p, i) => (
             <span key={p.userId} className={cn(p.userId === me.id && "font-bold text-primary")}>

@@ -6,22 +6,13 @@ import { castVote, deleteScreenshot, reopenMatch, uploadScreenshot } from "@/app
 import { MAX_SCREENSHOTS, TEAM_LABEL, VOTE_LABEL } from "@/lib/constants";
 import type { MatchResults as Results, Participant, Screenshot, Team, VoteKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { leaders } from "@/lib/participants";
 import { LaneIcon } from "../icons/lane-icon";
 import { Button } from "../ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "../ui/drawer";
 import { TEAM_STYLE } from "./team-style";
 
 type Me = { id: string; isAdmin: boolean };
-
-/** 최다 득표자 닉네임 (동률이면 모두) */
-function leaders(tally: Record<string, number>, participants: Participant[]): string | null {
-  const max = Math.max(0, ...Object.values(tally));
-  if (max === 0) return null;
-  return participants
-    .filter((p) => tally[p.userId] === max)
-    .map((p) => p.nickname)
-    .join(", ");
-}
 
 const otherTeam = (team: Team): Team => (team === "blue" ? "red" : "blue");
 
@@ -56,7 +47,7 @@ export function MatchResults({
   };
 
   return (
-    <section className={cn("mt-3 rounded-xl bg-background/50", reopening && "opacity-50")}>
+    <section className={cn("mt-3 rounded-xl bg-card", reopening && "opacity-50")}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

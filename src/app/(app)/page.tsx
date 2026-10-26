@@ -1,18 +1,17 @@
 import Link from "next/link";
 import { History } from "lucide-react";
-import { MatchCard } from "@/components/match/match-card";
+import { TicketSummary } from "@/components/match/ticket-summary";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
-import { getMatchCards, getUsers } from "@/lib/data";
+import { getMatchCards } from "@/lib/data";
 
-/** 메인: 오늘 이후 티켓. 지난 매치는 /history */
+/** 메인: 오늘 이후 티켓 요약 목록 (누르면 /ticket/[date]). 지난 매치는 /history */
 export default async function HomePage() {
   const me = await requireUser();
-  const [cards, users] = await Promise.all([getMatchCards("upcoming", me.id), me.is_admin ? getUsers() : []]);
-  const members = users.map(({ id, nickname }) => ({ id, nickname }));
+  const cards = await getMatchCards("upcoming", me.id);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {cards.length === 0 ? (
         <section className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed p-8 text-center">
           <p className="text-lg font-bold">예정된 티켓 없음</p>
@@ -22,9 +21,7 @@ export default async function HomePage() {
           </Button>
         </section>
       ) : (
-        cards.map((card) => (
-          <MatchCard key={card.date} card={card} me={{ id: me.id, isAdmin: me.is_admin }} members={members} />
-        ))
+        cards.map((card) => <TicketSummary key={card.date} card={card} me={{ id: me.id, isAdmin: me.is_admin }} />)
       )}
 
       <Button asChild variant="ghost" className="text-muted-foreground">
