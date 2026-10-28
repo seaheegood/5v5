@@ -44,8 +44,11 @@ export type UserPatch = {
 
 export type SettingsRow = {
   play_date: string;
-  match_format: string;
+  /** 관리자가 시간만 먼저 정했으면 null (방식 미정) */
+  match_format: string | null;
   stake_amount: number | null;
+  start_override: number | null;
+  pc_bang: string | null;
   updated_at: string;
   updater_nickname: string | null;
 };
@@ -74,8 +77,11 @@ export type CheerRow = {
   author_id: string | null;
   nickname: string | null;
   body: string;
+  is_anonymous: boolean;
   created_at: string;
 };
+
+export type TimePrefRow = { play_date: string; user_id: string; start_min: number; reason: string };
 
 export type ScreenshotRow = {
   id: string;
@@ -122,8 +128,16 @@ export interface Repo {
     play_date: string;
     match_format: string;
     stake_amount: number | null;
+    pc_bang: string | null;
     updated_by: string;
   }): Promise<void>;
+  /** 관리자 시작 시간 덮어쓰기 (null 이면 자동 확정으로 되돌림). 세팅 행이 없으면 만든다 */
+  setStartOverride(date: string, startMin: number | null, updatedBy: string): Promise<void>;
+
+  // ── time prefs (시작 시간 응답) ─────────
+  listTimePrefs(dates: string[]): Promise<TimePrefRow[]>;
+  upsertTimePref(input: TimePrefRow): Promise<void>;
+  deleteTimePref(date: string, userId: string): Promise<void>;
   /** 그날의 응답/설정/결과/투표/댓글/스크린샷 전부 삭제. 삭제된 스크린샷 파일 경로를 돌려준다 */
   deleteMatch(date: string): Promise<string[]>;
 
@@ -151,7 +165,7 @@ export interface Repo {
 
   // ── cheers (응원하기) ──────────────────
   listCheers(targetId: string): Promise<CheerRow[]>;
-  insertCheer(input: { target_id: string; author_id: string; body: string }): Promise<void>;
+  insertCheer(input: { target_id: string; author_id: string; body: string; is_anonymous: boolean }): Promise<void>;
   findCheer(id: string): Promise<CheerRow | null>;
   deleteCheer(id: string): Promise<void>;
 

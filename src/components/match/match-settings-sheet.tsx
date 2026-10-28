@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { updateMatchSettings } from "@/app/actions/match";
-import { MATCH_FORMAT_PRESETS, MAX_STAKE, STAKE_PRESETS, formatStake } from "@/lib/constants";
+import { MATCH_FORMAT_PRESETS, MAX_PC_BANG_LENGTH, MAX_STAKE, STAKE_PRESETS, formatStake } from "@/lib/constants";
 import { formatKoreanDate } from "@/lib/date";
 import type { MatchSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -58,6 +58,7 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
   const [matchFormat, setMatchFormat] = useState(settings?.matchFormat ?? MATCH_FORMAT_PRESETS[0]);
   // 입력칸은 숫자 문자열로 다룬다 ("" = 아직 안 정함)
   const [stake, setStake] = useState(settings?.stake?.toString() ?? "");
+  const [pcBang, setPcBang] = useState(settings?.pcBang ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -66,6 +67,7 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
       // 열 때마다 최신 서버 값으로 초기화
       setMatchFormat(settings?.matchFormat ?? MATCH_FORMAT_PRESETS[0]);
       setStake(settings?.stake?.toString() ?? "");
+      setPcBang(settings?.pcBang ?? "");
       setError(null);
     }
     setOpen(next);
@@ -73,7 +75,7 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
 
   const save = () =>
     startTransition(async () => {
-      const result = await updateMatchSettings({ date, matchFormat, stake: parseStake(stake) });
+      const result = await updateMatchSettings({ date, matchFormat, stake: parseStake(stake), pcBang });
       if (result.ok) setOpen(false);
       else setError(result.error);
     });
@@ -131,6 +133,19 @@ export function MatchSettingsSheet({ date, settings }: { date: string; settings:
               />
               <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-muted-foreground">원</span>
             </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <label htmlFor="match-pc-bang" className="font-bold">
+              PC방 <span className="text-sm font-normal text-muted-foreground">(선택)</span>
+            </label>
+            <Input
+              id="match-pc-bang"
+              value={pcBang}
+              maxLength={MAX_PC_BANG_LENGTH}
+              onChange={(e) => setPcBang(e.target.value)}
+              placeholder="예: 강남역 레드포스 PC방"
+            />
           </section>
 
           {error && <p className="text-sm font-semibold text-destructive">{error}</p>}

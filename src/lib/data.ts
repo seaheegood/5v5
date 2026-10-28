@@ -1,5 +1,6 @@
 import "server-only";
 import { addDays, todayKST } from "./date";
+import { computeMatchTime } from "./match-time";
 import { toParticipants } from "./participants";
 import { repo } from "./repo";
 import type { MatchCardData, MatchResults, PlayerProfile, PlayerRecord, PublicUser, Schedule, VoteKind } from "./types";
@@ -48,22 +49,31 @@ async function loadCards(range: { from?: string; to?: string }, meId: string): P
   const cardDates = [...byDate.keys()];
 
   // 결과(투표/스크린샷)는 관리자가 종료 처리한 매치만, 댓글은 항상
-  const [settings, results, comments] = await Promise.all([
+  const [settings, results, comments, timePrefs] = await Promise.all([
     repo.listSettings(cardDates),
     getMatchResults(cardDates, meId),
     repo.listComments(cardDates),
+    repo.listTimePrefs(cardDates),
   ]);
   const settingsByDate = new Map(settings.map((row) => [row.play_date, row]));
 
   return cardDates.map((date) => {
     const row = settingsByDate.get(date);
+    const participants = toParticipants(byDate.get(date)!);
     return {
       date,
-      participants: toParticipants(byDate.get(date)!),
+      participants,
+      time: computeMatchTime(
+        participants,
+        timePrefs.filter((p) => p.play_date === date),
+        row?.start_override ?? null,
+      ),
       settings: row
         ? {
             matchFormat: row.match_format,
             stake: row.stake_amount,
+            pcBang: row.pc_bang,
+            startOverride: row.start_override,
             updatedAt: row.updated_at,
             updatedByNickname: row.updater_nickname,
           }

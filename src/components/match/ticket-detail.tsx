@@ -2,11 +2,12 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, MapPin, Trash2 } from "lucide-react";
 import { deleteMatch } from "@/app/actions/match";
-import { MATCH_FULL, TEAM_LABEL, formatStake } from "@/lib/constants";
+import { MATCH_FULL, TEAM_LABEL, formatStake, formatTimeRange, pcBangMapUrl } from "@/lib/constants";
 import { formatKoreanDate, todayKST } from "@/lib/date";
 import { seatedCount } from "@/lib/participants";
+import { STATUS_BADGE, STATUS_LABEL, ticketStatus } from "@/lib/ticket-status";
 import type { MatchCardData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
@@ -17,12 +18,14 @@ import { MatchSettingsSheet } from "./match-settings-sheet";
 import { ProgressGauge } from "./progress-gauge";
 import { SlotBoard } from "./slot-board";
 import { TEAM_STYLE } from "./team-style";
+import { TimeSection } from "./time-section";
 
 /**
  * 티켓 상세 (/ticket/[date]).
- * 상태·게이지 → 자리 10칸 → 방식·판돈 한 줄 → 결과(종료 후) → 댓글 → 관리자 버튼
+ * 상태·게이지 → 자리 10칸 → 시작 시간 → 방식·판돈·PC방 → 결과(종료 후) → 댓글 → 관리자 버튼
  * - 모집 중: 빈 칸에 들어가기, 댓글로 조율
- * - 10칸이 다 차면 확정 → 경기 당일부터 관리자가 승리팀을 골라 종료
+ * - 10칸이 다 차면 시간 조율 중 → 10명 모두 시작 시간을 내면 확정
+ * - 경기 당일부터 관리자가 승리팀을 골라 종료 (시간 확정과 무관)
  * - 종료: 자리 잠금 + 결과(스크린샷/MVP/범인)
  * - 지난 날짜: 관리자만 자리 수정 가능
  */
@@ -42,11 +45,13 @@ export function TicketDetail({
   const past = card.date < today;
   const seated = seatedCount(card.participants);
   const remaining = MATCH_FULL - seated;
-  const confirmed = remaining === 0;
+  const full = remaining === 0;
+  const status = ticketStatus(card);
+  const confirmed = status === "confirmed";
   const results = card.results;
   const finished = results !== null;
   const locked = finished || (past && !me.isAdmin);
-  const canFinish = me.isAdmin && !finished && confirmed && card.date <= today;
+  const canFinish = me.isAdmin && !finished && full && card.date <= today;
 
   const onDelete = () => {
     if (!confirm(`${formatKoreanDate(card.date)} 티켓을 삭제할까요? (자리/댓글/투표/사진 모두 삭제)`)) return;
@@ -61,13 +66,8 @@ export function TicketDetail({
     <div className={cn("flex flex-col", deleting && "opacity-50")}>
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-2xl font-extrabold">{formatKoreanDate(card.date)}</h2>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-3 py-1 text-sm font-bold",
-            confirmed && !finished ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
-          )}
-        >
-          {finished ? "종료" : confirmed ? "확정" : "모집 중"}
+        <span className={cn("shrink-0 rounded-full px-3 py-1 text-sm font-bold", STATUS_BADGE[status])}>
+          {STATUS_LABEL[status]}
         </span>
       </header>
 
@@ -82,8 +82,10 @@ export function TicketDetail({
         {finished
           ? `${TEAM_LABEL[results.winner]} 승리`
           : confirmed
-            ? "매치 확정 · 10명 다 모였어요"
-            : past
+            ? `매치 확정 · ${formatTimeRange(card.time.confirmedStart!, card.settings?.matchFormat)}`
+            : full
+              ? `10명 다 모였어요 · 시작 시간을 내 주세요 (${card.time.prefs.length}/${MATCH_FULL})`
+              : past
               ? `${remaining}자리 비어 있었어요`
               : `${remaining}자리 남음 · 빈 칸을 눌러 들어가세요`}
       </p>
@@ -97,6 +99,11 @@ export function TicketDetail({
         winner={results?.winner ?? null}
       />
 
+      {/* 시작 시간 조율 (종료된 매치는 확정 시간이 있을 때만 보기) */}
+      {(!finished || card.time.confirmedStart !== null) && (
+        <TimeSection card={card} me={me} locked={finished || past} />
+      )}
+
       {/* 방식·판돈 한 줄 */}
       <section className="mt-3 flex items-center gap-3 rounded-xl bg-card px-4 py-3">
         <div className="min-w-0 flex-1">
@@ -106,6 +113,17 @@ export function TicketDetail({
             <span className="mx-1.5 text-muted-foreground">·</span>
             <span className="text-muted-foreground">판돈</span> <b>{formatStake(card.settings?.stake)}</b>
           </p>
+          {card.settings?.pcBang && (
+            <a
+              href={pcBangMapUrl(card.settings.pcBang)}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 flex items-center gap-1 text-sm font-semibold underline-offset-2 active:underline"
+            >
+              <MapPin className="size-4 shrink-0 text-primary" />
+              <span className="truncate">{card.settings.pcBang}</span>
+            </a>
+          )}
           {card.settings && (
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               설정: {card.settings.updatedByNickname ?? "탈퇴한 멤버"}
@@ -152,7 +170,7 @@ export function TicketDetail({
           </Button>
         </div>
       )}
-      {me.isAdmin && confirmed && !finished && !canFinish && (
+      {me.isAdmin && full && !finished && !canFinish && (
         <p className="mt-2 text-center text-xs text-muted-foreground">경기 당일부터 종료할 수 있어요</p>
       )}
     </div>
