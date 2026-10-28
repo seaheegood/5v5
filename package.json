@@ -7,7 +7,8 @@
     "dev:mock": "MOCK_DB=1 next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/gen-icon-data.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
