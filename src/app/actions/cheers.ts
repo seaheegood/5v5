@@ -6,8 +6,8 @@ import { MAX_COMMENT_LENGTH } from "@/lib/constants";
 import { repo } from "@/lib/repo";
 import type { ActionResult } from "@/lib/types";
 
-/** 응원하기 (개인 페이지). 로그인 멤버 누구나, 본인에게도 가능 */
-export async function addCheer(input: { targetId: string; body: string }): Promise<ActionResult> {
+/** 응원하기 (개인 페이지). 로그인 멤버 누구나, 본인에게도 가능. anonymous 면 관리자/본인 외에는 '익명' */
+export async function addCheer(input: { targetId: string; body: string; anonymous?: boolean }): Promise<ActionResult> {
   const me = await requireUser();
   const body = input.body?.trim() ?? "";
   if (body.length < 1 || body.length > MAX_COMMENT_LENGTH) {
@@ -15,7 +15,7 @@ export async function addCheer(input: { targetId: string; body: string }): Promi
   }
   if (!(await repo.findUser(input.targetId))) return { ok: false, error: "없는 멤버예요." };
 
-  await repo.insertCheer({ target_id: input.targetId, author_id: me.id, body });
+  await repo.insertCheer({ target_id: input.targetId, author_id: me.id, body, is_anonymous: input.anonymous === true });
   revalidatePath(`/players/${input.targetId}`);
   return { ok: true };
 }

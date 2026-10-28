@@ -5,6 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "5v5 · 주말 내전",
   description: "주말 롤 5대5 내전 일정 잡기",
+  openGraph: { siteName: "5v5", type: "website", locale: "ko_KR" },
   appleWebApp: { capable: true, title: "5v5", statusBarStyle: "black-translucent" },
 };
 
