@@ -11,8 +11,9 @@ export function Cheers({ targetId, cheers, me }: { targetId: string; cheers: Com
       title="응원"
       items={cheers}
       me={me}
-      onAdd={(body) => addCheer({ targetId, body })}
+      onAdd={(body, anonymous) => addCheer({ targetId, body, anonymous })}
       onDelete={deleteCheer}
+      allowAnonymous
     />
   );
 }

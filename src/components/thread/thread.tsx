@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { EyeOff, X } from "lucide-react";
 import { MAX_COMMENT_LENGTH } from "@/lib/constants";
 import type { ActionResult, Comment } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,8 @@ const commentTime = new Intl.DateTimeFormat("ko-KR", {
 /**
  * 댓글 목록 + 입력. 티켓 댓글과 개인 페이지 '응원하기'가 같이 쓴다 (이름과 저장 위치만 다름).
  * 누구나 작성, 작성자/관리자만 삭제. 작성자 이름을 누르면 그 멤버의 개인 페이지로.
+ * allowAnonymous 면 '익명으로' 토글 (응원). 익명 글은 서버가 실명을 지워서 보내고,
+ * 관리자에게만 '익명 (실명)', 작성자 본인에게는 '익명 (나)'로 보인다.
  */
 export function Thread({
   title,
@@ -30,14 +32,17 @@ export function Thread({
   me,
   onAdd,
   onDelete,
+  allowAnonymous = false,
 }: {
   title: string;
   items: Comment[];
   me: Me;
-  onAdd: (body: string) => Promise<ActionResult>;
+  onAdd: (body: string, anonymous: boolean) => Promise<ActionResult>;
   onDelete: (id: string) => Promise<ActionResult>;
+  allowAnonymous?: boolean;
 }) {
   const [body, setBody] = useState("");
+  const [anonymous, setAnonymous] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -46,7 +51,7 @@ export function Thread({
     if (!body.trim()) return;
     startTransition(async () => {
       setError(null);
-      const result = await onAdd(body);
+      const result = await onAdd(body, allowAnonymous && anonymous);
       if (result.ok) setBody("");
       else setError(result.error);
     });
@@ -72,23 +77,14 @@ export function Thread({
             <li key={c.id} className="flex items-start gap-2 py-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  {c.userId ? (
-                    <Link
-                      href={`/players/${c.userId}`}
-                      className={cn("text-sm font-bold underline-offset-2 active:underline", c.userId === me.id && "text-primary")}
-                    >
-                      {c.nickname}
-                    </Link>
-                  ) : (
-                    <span className="text-sm font-bold text-muted-foreground">탈퇴한 멤버</span>
-                  )}
+                  <Author c={c} meId={me.id} />
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {commentTime.format(new Date(c.createdAt))}
                   </span>
                 </div>
                 <p className="mt-0.5 text-base break-words whitespace-pre-wrap">{c.body}</p>
               </div>
-              {(c.userId === me.id || me.isAdmin) && (
+              {(c.mine || c.userId === me.id || me.isAdmin) && (
                 <button
                   type="button"
                   onClick={() => remove(c.id)}
@@ -104,12 +100,25 @@ export function Thread({
         </ul>
       )}
 
+      {allowAnonymous && (
+        <label className="flex h-9 items-center gap-2 self-start text-sm font-semibold text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={anonymous}
+            onChange={(e) => setAnonymous(e.target.checked)}
+            className="size-5 accent-[var(--primary)]"
+          />
+          <EyeOff className="size-4" />
+          익명으로 달기
+        </label>
+      )}
+
       <form onSubmit={submit} className="flex gap-2">
         <Input
           value={body}
           onChange={(e) => setBody(e.target.value)}
           maxLength={MAX_COMMENT_LENGTH}
-          placeholder={`${title} 달기`}
+          placeholder={allowAnonymous && anonymous ? `익명 ${title} 달기` : `${title} 달기`}
           enterKeyHint="send"
           className="flex-1"
         />
@@ -119,5 +128,35 @@ export function Thread({
       </form>
       {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
     </section>
+  );
+}
+
+/** 작성자 표시: 실명(링크) / 익명 / 익명 (나) / 익명 (실명, 관리자만) / 탈퇴한 멤버 */
+function Author({ c, meId }: { c: Comment; meId: string }) {
+  const name = c.userId ? (
+    <Link
+      href={`/players/${c.userId}`}
+      className={cn("underline-offset-2 active:underline", c.userId === meId && "text-primary")}
+    >
+      {c.nickname}
+    </Link>
+  ) : null;
+
+  if (c.anonymous) {
+    return (
+      <span className="text-sm font-bold">
+        <span className="text-muted-foreground">익명</span>
+        {c.mine ? (
+          <span className="ml-1 text-primary">(나)</span>
+        ) : (
+          name && <span className="ml-1 font-semibold">({name})</span>
+        )}
+      </span>
+    );
+  }
+  return name ? (
+    <span className="text-sm font-bold">{name}</span>
+  ) : (
+    <span className="text-sm font-bold text-muted-foreground">탈퇴한 멤버</span>
   );
 }

@@ -12,6 +12,7 @@ import {
   type ResultRow,
   type ScreenshotRow,
   type SettingsRow,
+  type TimePrefRow,
   type VoteRow,
 } from "./types";
 
@@ -175,7 +176,8 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async listSettings(dates) {
       if (dates.length === 0) return [];
       return (await sql()`
-        select m.play_date::text, m.match_format, m.stake_amount, m.updated_at::text, u.nickname as updater_nickname
+        select m.play_date::text, m.match_format, m.stake_amount, m.start_override, m.pc_bang,
+               m.updated_at::text, u.nickname as updater_nickname
         from match_settings m
         left join users u on u.id = m.updated_by
         where m.play_date = any(${dates}::date[])`) as SettingsRow[];
@@ -183,13 +185,44 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
 
     async upsertSettings(input) {
       await sql()`
-        insert into match_settings (play_date, match_format, stake_amount, updated_by)
-        values (${input.play_date}, ${input.match_format}, ${input.stake_amount}, ${input.updated_by})
+        insert into match_settings (play_date, match_format, stake_amount, pc_bang, updated_by)
+        values (${input.play_date}, ${input.match_format}, ${input.stake_amount}, ${input.pc_bang}, ${input.updated_by})
         on conflict (play_date)
         do update set
           match_format = excluded.match_format,
           stake_amount = excluded.stake_amount,
+          pc_bang = excluded.pc_bang,
           updated_by = excluded.updated_by`;
+    },
+
+    async setStartOverride(date, startMin, updatedBy) {
+      // 세팅 행이 없으면 방식·판돈 미정으로 만든다
+      await sql()`
+        insert into match_settings (play_date, match_format, start_override, updated_by)
+        values (${date}, null, ${startMin}, ${updatedBy})
+        on conflict (play_date)
+        do update set start_override = excluded.start_override, updated_by = excluded.updated_by`;
+    },
+
+    // ── time prefs (시작 시간 응답) ─────────
+    async listTimePrefs(dates) {
+      if (dates.length === 0) return [];
+      return (await sql()`
+        select play_date::text, user_id, start_min, reason
+        from match_time_prefs
+        where play_date = any(${dates}::date[])`) as TimePrefRow[];
+    },
+
+    async upsertTimePref(input) {
+      await sql()`
+        insert into match_time_prefs (play_date, user_id, start_min, reason)
+        values (${input.play_date}, ${input.user_id}, ${input.start_min}, ${input.reason})
+        on conflict (play_date, user_id)
+        do update set start_min = excluded.start_min, reason = excluded.reason, updated_at = now()`;
+    },
+
+    async deleteTimePref(date, userId) {
+      await sql()`delete from match_time_prefs where play_date = ${date} and user_id = ${userId}`;
     },
 
     async deleteMatch(date) {
@@ -200,6 +233,7 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
         db`delete from match_votes where play_date = ${date}`,
         db`delete from match_results where play_date = ${date}`, // match_players 는 cascade
         db`delete from match_settings where play_date = ${date}`,
+        db`delete from match_time_prefs where play_date = ${date}`,
         db`delete from schedules where play_date = ${date}`,
       ]);
       return (shots as { storage_path: string }[]).map((s) => s.storage_path);
@@ -308,7 +342,7 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
     async listCheers(targetId) {
       if (!isUuid(targetId)) return [];
       return (await sql()`
-        select c.id, c.target_id, c.author_id, u.nickname, c.body,
+        select c.id, c.target_id, c.author_id, u.nickname, c.body, c.is_anonymous,
                to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
         from user_cheers c
         left join users u on u.id = c.author_id
@@ -318,14 +352,14 @@ export function createPostgresRepo(sql: () => NeonQueryFunction<false, false>): 
 
     async insertCheer(input) {
       await sql()`
-        insert into user_cheers (target_id, author_id, body)
-        values (${input.target_id}, ${input.author_id}, ${input.body})`;
+        insert into user_cheers (target_id, author_id, body, is_anonymous)
+        values (${input.target_id}, ${input.author_id}, ${input.body}, ${input.is_anonymous})`;
     },
 
     async findCheer(id) {
       if (!isUuid(id)) return null;
       const rows = await sql()`
-        select c.id, c.target_id, c.author_id, u.nickname, c.body,
+        select c.id, c.target_id, c.author_id, u.nickname, c.body, c.is_anonymous,
                to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at
         from user_cheers c
         left join users u on u.id = c.author_id

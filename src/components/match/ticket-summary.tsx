@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { LANES, LANE_LABEL, MATCH_FULL, TEAM_LABEL } from "@/lib/constants";
+import { ChevronRight, Clock, MapPin } from "lucide-react";
+import { LANES, LANE_LABEL, MATCH_FULL, TEAM_LABEL, formatStartTime, formatTimeRange } from "@/lib/constants";
 import { formatKoreanDate, todayKST } from "@/lib/date";
 import { leaders, seatedCount } from "@/lib/participants";
+import { STATUS_BADGE, STATUS_LABEL, ticketStatus } from "@/lib/ticket-status";
 import type { MatchCardData, Team } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { LaneIcon } from "../icons/lane-icon";
@@ -28,10 +29,13 @@ function emptySlots(card: MatchCardData): string[] {
  */
 export function TicketSummary({ card, me }: { card: MatchCardData; me: { id: string; isAdmin: boolean } }) {
   const seated = seatedCount(card.participants);
-  const confirmed = seated >= MATCH_FULL;
+  const full = seated >= MATCH_FULL;
+  const status = ticketStatus(card);
   const results = card.results;
   const today = todayKST();
-  const canFinish = me.isAdmin && !results && confirmed && card.date <= today;
+  const canFinish = me.isAdmin && !results && full && card.date <= today;
+  const { confirmedStart, prefs, leading } = card.time;
+  const pcBang = card.settings?.pcBang;
   const mine = card.participants.find((p) => p.userId === me.id);
   const latest = card.comments.at(-1);
 
@@ -39,20 +43,15 @@ export function TicketSummary({ card, me }: { card: MatchCardData; me: { id: str
     <article
       className={cn(
         "rounded-2xl border-2 bg-card shadow-lg shadow-black/20",
-        confirmed && !results && card.date >= today ? "border-success/60" : "border-border",
+        status === "confirmed" && card.date >= today ? "border-success/60" : "border-border",
       )}
     >
       <Link href={`/ticket/${card.date}`} className="flex flex-col gap-2.5 p-4 active:opacity-70">
         <header className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-extrabold">{formatKoreanDate(card.date)}</h2>
           <span className="flex items-center gap-1">
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                confirmed && !results ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
-              )}
-            >
-              {results ? "종료" : confirmed ? "확정" : "모집 중"}
+            <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-bold", STATUS_BADGE[status])}>
+              {STATUS_LABEL[status]}
             </span>
             <ChevronRight className="size-5 text-muted-foreground" />
           </span>
@@ -77,6 +76,33 @@ export function TicketSummary({ card, me }: { card: MatchCardData; me: { id: str
               </span>
             </div>
           </>
+        )}
+
+        {/* 시간 · PC방 */}
+        {(confirmedStart !== null || (full && !results) || pcBang) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            {confirmedStart !== null ? (
+              <span className="flex items-center gap-1 font-semibold text-success tabular-nums">
+                <Clock className="size-4" />
+                {formatTimeRange(confirmedStart, card.settings?.matchFormat)}
+              </span>
+            ) : (
+              full &&
+              !results && (
+                <span className="flex items-center gap-1 text-primary tabular-nums">
+                  <Clock className="size-4" />
+                  시간 응답 {prefs.length}/{MATCH_FULL}
+                  {leading !== null && ` · 1위 ${formatStartTime(leading)}`}
+                </span>
+              )
+            )}
+            {pcBang && (
+              <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                <MapPin className="size-4 shrink-0" />
+                <span className="truncate">{pcBang}</span>
+              </span>
+            )}
+          </div>
         )}
 
         <p className="flex items-center gap-2 rounded-lg bg-background/50 px-3 py-2 text-sm">

@@ -83,3 +83,37 @@ export function formatProfit(amount: number): string {
 
 export const isLane = (v: unknown): v is Lane => typeof v === "string" && (LANES as readonly string[]).includes(v);
 export const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS as readonly string[]).includes(v);
+
+/** 원하는 시작 시간 선택지: 30분 단위 10:00(600) ~ 다음날 02:00(1560). 분 단위로 저장 */
+export const START_MIN = 600;
+export const START_MAX = 1560;
+export const START_SLOTS = Array.from({ length: (START_MAX - START_MIN) / 30 + 1 }, (_, i) => START_MIN + i * 30);
+export const MAX_REASON_LENGTH = 100;
+export const MAX_PC_BANG_LENGTH = 40;
+
+export const isStartSlot = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= START_MIN && v <= START_MAX && v % 30 === 0;
+
+/** 1290 → "21:30", 1500 → "01:00" (nextDay 표시는 옵션) */
+export function formatStartTime(min: number, { nextDay = false } = {}): string {
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  const text = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  return nextDay && min >= 1440 ? `${text}(다음날)` : text;
+}
+
+/** 방식별 예상 경기 시간(시간). 5판 3선승제 5h, 3판 2선승제 3h, 단판·칼바람 1h, 그 외 2h */
+export function matchDurationHours(format: string | null | undefined): number {
+  const f = format ?? "";
+  if (f.includes("5판")) return 5;
+  if (f.includes("3판")) return 3;
+  if (f.includes("단판") || f.includes("칼바람")) return 1;
+  return 2;
+}
+
+/** "21:00 ~ 24:00" (끝 시간이 24시를 넘으면 다음날 시각) */
+export function formatTimeRange(start: number, format: string | null | undefined): string {
+  return `${formatStartTime(start)} ~ ${formatStartTime(start + matchDurationHours(format) * 60)}`;
+}
+
+export const pcBangMapUrl = (name: string) => `https://map.naver.com/p/search/${encodeURIComponent(name)}`;

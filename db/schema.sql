@@ -122,6 +122,9 @@ create table if not exists public.match_settings (
   stake         text not null default ''
                 check (char_length(stake) <= 50),
   stake_amount  integer check (stake_amount between 0 and 10000000),
+  -- 관리자가 덮어쓴 시작 시간 (분 단위 600=10:00 ~ 1560=다음날 02:00). null 이면 응답으로 자동 확정
+  start_override smallint check (start_override between 600 and 1560 and start_override % 30 = 0),
+  pc_bang       text check (char_length(pc_bang) <= 40),
   updated_by    uuid references public.users (id) on delete set null,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
@@ -135,6 +138,14 @@ set stake_amount = regexp_replace(stake, '[^0-9]', '', 'g')::integer
 where stake_amount is null
   and stake ~ '^\s*[0-9][0-9,]*\s*원?\s*$'
   and char_length(regexp_replace(stake, '[^0-9]', '', 'g')) between 1 and 7;
+
+-- 방식 미정 허용 (관리자가 시간만 먼저 정한 경우)
+alter table public.match_settings alter column match_format drop not null;
+
+alter table public.match_settings add column if not exists start_override smallint
+  check (start_override between 600 and 1560 and start_override % 30 = 0);
+alter table public.match_settings add column if not exists pc_bang text
+  check (char_length(pc_bang) <= 40);
 
 drop trigger if exists match_settings_set_updated_at on public.match_settings;
 create trigger match_settings_set_updated_at
@@ -211,6 +222,19 @@ create index if not exists match_screenshots_play_date_idx
   on public.match_screenshots (play_date);
 
 -- ---------------------------------------------------------------------
+-- match_time_prefs : 각자 원하는 시작 시간 + 사유 (자리에 들어간 사람, 하루 1개)
+--   10칸이 다 차고 10명 모두 응답하면 최다 선택(동률이면 늦은 시간)으로 자동 확정 (앱에서 계산)
+-- ---------------------------------------------------------------------
+create table if not exists public.match_time_prefs (
+  play_date   date not null,
+  user_id     uuid not null references public.users (id) on delete cascade,
+  start_min   smallint not null check (start_min between 600 and 1560 and start_min % 30 = 0),
+  reason      text not null default '' check (char_length(reason) <= 100),
+  updated_at  timestamptz not null default now(),
+  primary key (play_date, user_id)
+);
+
+-- ---------------------------------------------------------------------
 -- user_cheers : 멤버 개인 페이지의 '응원하기' (동작은 티켓 댓글과 같음)
 -- ---------------------------------------------------------------------
 create table if not exists public.user_cheers (
@@ -218,8 +242,11 @@ create table if not exists public.user_cheers (
   target_id   uuid not null references public.users (id) on delete cascade,
   author_id   uuid references public.users (id) on delete set null,
   body        text not null check (char_length(btrim(body)) between 1 and 300),
+  is_anonymous boolean not null default false,
   created_at  timestamptz not null default now()
 );
+
+alter table public.user_cheers add column if not exists is_anonymous boolean not null default false;
 
 create index if not exists user_cheers_target_idx
   on public.user_cheers (target_id, created_at);

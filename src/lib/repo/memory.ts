@@ -14,6 +14,7 @@ import {
   type ResultRow,
   type ScreenshotRow,
   type SettingsRow,
+  type TimePrefRow,
   type VoteRow,
 } from "./types";
 
@@ -33,12 +34,21 @@ type ScheduleRow = {
 };
 type MatchSettingsRow = {
   play_date: string;
-  match_format: string;
+  match_format: string | null;
   stake_amount: number | null;
+  start_override: number | null;
+  pc_bang: string | null;
   updated_by: string | null;
   updated_at: string;
 };
-type MemCheer = { id: string; target_id: string; author_id: string | null; body: string; created_at: string };
+type MemCheer = {
+  id: string;
+  target_id: string;
+  author_id: string | null;
+  body: string;
+  is_anonymous: boolean;
+  created_at: string;
+};
 type MatchResultRow = { play_date: string; winner: Team; finished_by: string | null };
 type MemComment = { id: string; play_date: string; user_id: string | null; body: string; created_at: string };
 type ShotRow = { id: string; play_date: string; storage_path: string; uploader_id: string | null; created_at: string };
@@ -52,6 +62,7 @@ type Store = {
   votes: VoteRow[];
   comments: MemComment[];
   cheers: MemCheer[];
+  timePrefs: TimePrefRow[];
   screenshots: ShotRow[];
 };
 
@@ -124,7 +135,7 @@ function seed(): Store {
   add(2, [[1, "blue", "jungle"], [2, "join"], [8, "red", "support"]]);
   add(8, ten);
 
-  const settings: MatchSettingsRow[] = [
+  const settings: MatchSettingsRow[] = ([
     { play_date: addDays(today, -14), match_format: "3판 2선승제", stake_amount: 50000, updated_by: users[0].id, updated_at: now },
     ...olderWeeks.map((diff, i) => ({
       play_date: addDays(today, diff),
@@ -135,7 +146,8 @@ function seed(): Store {
     })),
     { play_date: addDays(today, -7), match_format: "단판", stake_amount: 30000, updated_by: users[2].id, updated_at: now },
     { play_date: addDays(today, 1), match_format: "3판 2선승제", stake_amount: 30000, updated_by: users[1].id, updated_at: now },
-  ];
+    { play_date: addDays(today, 8), match_format: "5판 3선승제", stake_amount: 50000, pc_bang: "강남 레드포스 PC방", updated_by: users[0].id, updated_at: now },
+  ] as Omit<MatchSettingsRow, "start_override" | "pc_bang">[]).map((m) => ({ start_override: null, pc_bang: null, ...m }));
 
   // 지난 매치 종료 처리: 1팀 승, 자리 그대로 스냅샷
   const lastWeek = addDays(today, -7);
@@ -181,20 +193,33 @@ function seed(): Store {
     comment(tomorrow, 5, "탑 둘 다 찼네.. 서폿 가도 됨?", 60),
   ];
 
-  const cheer = (target: number, author: number, body: string, minutesAgo: number): MemCheer => ({
+  const cheer = (target: number, author: number, body: string, minutesAgo: number, is_anonymous = false): MemCheer => ({
     id: randomUUID(),
     target_id: users[target].id,
     author_id: users[author].id,
     body,
+    is_anonymous,
     created_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
   });
   const cheers: MemCheer[] = [
     cheer(2, 1, "미드 차이 ㄹㅇ 인정합니다", 3000),
     cheer(2, 8, "다음에 같은 팀 해주세요 🙏", 1200),
+    cheer(2, 5, "솔직히 무서워요... (익명)", 500, true),
     cheer(0, 2, "가렌 장인 화이팅...", 600),
   ];
 
-  return { users, schedules, settings, results, players, votes, comments, cheers, screenshots: [] };
+  // 시작 시간 응답: 오늘은 7/10 응답(조율 중), +8일은 10/10 응답(21:00 자동 확정)
+  const pref = (diff: number, user: number, hhmm: string, reason = ""): TimePrefRow => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return { play_date: addDays(today, diff), user_id: users[user].id, start_min: (h < 10 ? h + 24 : h) * 60 + m, reason };
+  };
+  const timePrefs: TimePrefRow[] = [
+    pref(0, 10, "21:00"), pref(0, 5, "21:00"), pref(0, 1, "20:00", "9시에 약속 있어서 8시면 좋겠어요"),
+    pref(0, 6, "21:00"), pref(0, 2, "22:00", "퇴근이 늦어요 ㅠ"), pref(0, 3, "21:00"), pref(0, 7, "20:00"),
+    ...ten.map(([i], n) => pref(8, i, n < 6 ? "21:00" : n < 9 ? "20:00" : "22:00", n === 9 ? "10시 전엔 불가" : "")),
+  ];
+
+  return { users, schedules, settings, results, players, votes, comments, cheers, timePrefs, screenshots: [] };
 }
 
 // 개발 서버 HMR 에도 유지되도록 globalThis 에 보관
@@ -289,6 +314,7 @@ export const memoryRepo: Repo = {
     for (const m of s.results) if (m.finished_by === id) m.finished_by = null;
     for (const m of s.comments) if (m.user_id === id) m.user_id = null;
     s.cheers = s.cheers.filter((c) => c.target_id !== id);
+    s.timePrefs = s.timePrefs.filter((p) => p.user_id !== id);
     for (const c of s.cheers) if (c.author_id === id) c.author_id = null;
     for (const m of s.settings) if (m.updated_by === id) m.updated_by = null;
     for (const m of s.screenshots) if (m.uploader_id === id) m.uploader_id = null;
@@ -352,6 +378,8 @@ export const memoryRepo: Repo = {
           play_date: m.play_date,
           match_format: m.match_format,
           stake_amount: m.stake_amount,
+          start_override: m.start_override,
+          pc_bang: m.pc_bang,
           updated_at: m.updated_at,
           updater_nickname: nicknameOf(m.updated_by),
         }),
@@ -362,7 +390,38 @@ export const memoryRepo: Repo = {
     const now = new Date().toISOString();
     const existing = store().settings.find((m) => m.play_date === input.play_date);
     if (existing) Object.assign(existing, input, { updated_at: now });
-    else store().settings.push({ ...input, updated_at: now });
+    else store().settings.push({ ...input, start_override: null, updated_at: now });
+  },
+
+  async setStartOverride(date, startMin, updatedBy) {
+    const now = new Date().toISOString();
+    const existing = store().settings.find((m) => m.play_date === date);
+    if (existing) Object.assign(existing, { start_override: startMin, updated_by: updatedBy, updated_at: now });
+    else
+      store().settings.push({
+        play_date: date,
+        match_format: null,
+        stake_amount: null,
+        pc_bang: null,
+        start_override: startMin,
+        updated_by: updatedBy,
+        updated_at: now,
+      });
+  },
+
+  // ── time prefs (시작 시간 응답) ─────────
+  async listTimePrefs(dates) {
+    return store().timePrefs.filter((p) => dates.includes(p.play_date));
+  },
+
+  async upsertTimePref(input) {
+    const existing = store().timePrefs.find((p) => p.play_date === input.play_date && p.user_id === input.user_id);
+    if (existing) Object.assign(existing, input);
+    else store().timePrefs.push({ ...input });
+  },
+
+  async deleteTimePref(date, userId) {
+    store().timePrefs = store().timePrefs.filter((p) => !(p.play_date === date && p.user_id === userId));
   },
 
   async deleteMatch(date) {
@@ -374,6 +433,7 @@ export const memoryRepo: Repo = {
     s.results = s.results.filter((r) => r.play_date !== date);
     s.players = s.players.filter((p) => p.play_date !== date);
     s.settings = s.settings.filter((m) => m.play_date !== date);
+    s.timePrefs = s.timePrefs.filter((p) => p.play_date !== date);
     s.schedules = s.schedules.filter((r) => r.play_date !== date);
     return paths;
   },

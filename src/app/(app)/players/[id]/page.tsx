@@ -87,13 +87,20 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
       {/* 응원하기 */}
       <Cheers
         targetId={user.id}
-        cheers={cheers.map((c) => ({
-          id: c.id,
-          userId: c.author_id,
-          nickname: c.nickname,
-          body: c.body,
-          createdAt: c.created_at,
-        }))}
+        cheers={cheers.map((c) => {
+          // 익명 응원: 관리자에게만 실명을 보낸다 (작성자 본인은 '익명 (나)'로 표시, 실명은 안 보냄)
+          const mine = c.author_id === me.id;
+          const reveal = !c.is_anonymous || me.is_admin;
+          return {
+            id: c.id,
+            userId: reveal ? c.author_id : null,
+            nickname: reveal ? c.nickname : null,
+            body: c.body,
+            createdAt: c.created_at,
+            anonymous: c.is_anonymous,
+            mine,
+          };
+        })}
         me={{ id: me.id, isAdmin: me.is_admin }}
       />
     </div>

@@ -5,7 +5,7 @@ import { repo } from "@/lib/repo";
 import { requireUser } from "@/lib/auth";
 import { isValidDate, todayKST } from "@/lib/date";
 import { removeImages } from "@/lib/storage";
-import { MAX_STAKE } from "@/lib/constants";
+import { MAX_PC_BANG_LENGTH, MAX_STAKE } from "@/lib/constants";
 import type { ActionResult } from "@/lib/types";
 
 /**
@@ -16,10 +16,13 @@ export async function updateMatchSettings(input: {
   date: string;
   matchFormat: string;
   stake: number;
+  pcBang?: string;
 }): Promise<ActionResult> {
   const me = await requireUser();
   const matchFormat = input.matchFormat?.trim() ?? "";
   const stake = input.stake;
+  const pcBang = input.pcBang?.trim() ?? "";
+  if (pcBang.length > MAX_PC_BANG_LENGTH) return { ok: false, error: `PC방은 ${MAX_PC_BANG_LENGTH}자까지예요.` };
 
   if (!isValidDate(input.date)) return { ok: false, error: "날짜가 올바르지 않아요." };
   if (matchFormat.length < 1 || matchFormat.length > 30) return { ok: false, error: "방식은 1~30자로 입력해 주세요." };
@@ -33,7 +36,13 @@ export async function updateMatchSettings(input: {
     }
   }
 
-  await repo.upsertSettings({ play_date: input.date, match_format: matchFormat, stake_amount: stake, updated_by: me.id });
+  await repo.upsertSettings({
+    play_date: input.date,
+    match_format: matchFormat,
+    stake_amount: stake,
+    pc_bang: pcBang || null,
+    updated_by: me.id,
+  });
 
   revalidatePath("/", "layout");
   return { ok: true };

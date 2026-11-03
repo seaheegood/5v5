@@ -37,9 +37,13 @@ export type Participant = {
 };
 
 export type MatchSettings = {
-  matchFormat: string;
+  /** null 이면 방식 미정 */
+  matchFormat: string | null;
   /** 1인당 판돈(원). null 이면 미정, 0 이면 없음 */
   stake: number | null;
+  pcBang: string | null;
+  /** 관리자가 덮어쓴 시작 시간(분). null 이면 응답으로 자동 확정 */
+  startOverride: number | null;
   updatedByNickname: string | null;
   updatedAt: string;
 };
@@ -58,10 +62,35 @@ export type Team = "blue" | "red";
 
 export type Comment = {
   id: string;
+  /** 익명 응원이면 관리자/작성자 본인이 아닐 때 null (서버에서 지워서 보냄) */
   userId: string | null;
   nickname: string | null;
   body: string;
   createdAt: string;
+  /** 익명 응원 여부 */
+  anonymous?: boolean;
+  /** 내가 쓴 글 (익명이어도 삭제 버튼/표시용) */
+  mine?: boolean;
+};
+
+/** 원하는 시작 시간 응답 */
+export type TimePref = {
+  userId: string;
+  nickname: string;
+  startMin: number;
+  reason: string;
+};
+
+/** 티켓의 시작 시간 조율 상태 */
+export type MatchTime = {
+  /** 자리에 있는 사람들의 응답 */
+  prefs: TimePref[];
+  /** 확정 시작 시간(분). 10칸이 다 차고 10명 모두 응답했거나, 관리자가 정했으면 값이 있음 */
+  confirmedStart: number | null;
+  /** 관리자가 덮어쓴 시간인지 */
+  overridden: boolean;
+  /** 최다 선택 시간 (응답이 있으면) */
+  leading: number | null;
 };
 
 /**
@@ -84,6 +113,8 @@ export type MatchCardData = {
   settings: MatchSettings | null;
   /** 티켓 댓글 (항상 열림) */
   comments: Comment[];
+  /** 시작 시간 조율 */
+  time: MatchTime;
   /** 종료된 매치만 존재 */
   results: MatchResults | null;
 };
