@@ -88,7 +88,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
       <Cheers
         targetId={user.id}
         cheers={cheers.map((c) => {
-          // 익명 응원: 관리자에게만 실명을 보낸다 (작성자 본인은 '익명 (나)'로 표시, 실명은 안 보냄)
+          // 익명 응원: 관리자에게만 실명을 보낸다 (작성자 본인에게도 '익명'으로만 표시, 실명은 안 보냄)
           const mine = c.author_id === me.id;
           const reveal = !c.is_anonymous || me.is_admin;
           return {
