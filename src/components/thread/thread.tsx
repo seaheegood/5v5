@@ -24,7 +24,7 @@ const commentTime = new Intl.DateTimeFormat("ko-KR", {
  * 댓글 목록 + 입력. 티켓 댓글과 개인 페이지 '응원하기'가 같이 쓴다 (이름과 저장 위치만 다름).
  * 누구나 작성, 작성자/관리자만 삭제. 작성자 이름을 누르면 그 멤버의 개인 페이지로.
  * allowAnonymous 면 '익명으로' 토글 (응원). 익명 글은 서버가 실명을 지워서 보내고,
- * 관리자에게만 '익명 (실명)', 작성자 본인에게는 '익명 (나)'로 보인다.
+ * 관리자에게만 '익명 (실명)'으로 보인다 (작성자 본인에게도 그냥 '익명').
  */
 export function Thread({
   title,
@@ -131,7 +131,7 @@ export function Thread({
   );
 }
 
-/** 작성자 표시: 실명(링크) / 익명 / 익명 (나) / 익명 (실명, 관리자만) / 탈퇴한 멤버 */
+/** 작성자 표시: 실명(링크) / 익명 / 익명 (실명, 관리자만) / 탈퇴한 멤버 */
 function Author({ c, meId }: { c: Comment; meId: string }) {
   const name = c.userId ? (
     <Link
@@ -146,11 +146,7 @@ function Author({ c, meId }: { c: Comment; meId: string }) {
     return (
       <span className="text-sm font-bold">
         <span className="text-muted-foreground">익명</span>
-        {c.mine ? (
-          <span className="ml-1 text-primary">(나)</span>
-        ) : (
-          name && <span className="ml-1 font-semibold">({name})</span>
-        )}
+        {!c.mine && name && <span className="ml-1 font-semibold">({name})</span>}
       </span>
     );
   }
