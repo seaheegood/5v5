@@ -146,7 +146,7 @@ function Author({ c, meId }: { c: Comment; meId: string }) {
     return (
       <span className="text-sm font-bold">
         <span className="text-muted-foreground">익명</span>
-        {!c.mine && name && <span className="ml-1 font-semibold">({name})</span>}
+        {name &&<span className="ml-1 font-semibold">({name})</span>}
       </span>
     );
   }
