@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   description: "주말 롤 5대5 내전 일정 잡기",
   openGraph: { siteName: "5v5", type: "website", locale: "ko_KR" },
   appleWebApp: { capable: true, title: "5v5", statusBarStyle: "black-translucent" },
+  // 지인 전용 앱이라 검색 결과에 안 나오게. robots.txt 로 크롤링까지 막으면 카톡 미리보기 봇이
+  // 공유 썸네일(og 메타·/og 이미지)을 못 읽으니 noindex 만 건다.
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

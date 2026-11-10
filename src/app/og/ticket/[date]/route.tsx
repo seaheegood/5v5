@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { LANES, LANE_LABEL, MATCH_FULL, ROMAN, TEAM_LABEL, formatStake, formatTier, formatTimeRange, hasDivision } from "@/lib/constants";
 import { getTicket } from "@/lib/data";
+import { loadPretendard } from "@/lib/og-font";
 import { LANE_ICON_DATA, TIER_ICON_DATA } from "@/lib/icon-data";
 import { formatKoreanDate, isValidDate } from "@/lib/date";
 import { seatedCount } from "@/lib/participants";
@@ -11,15 +12,6 @@ import type { Team } from "@/lib/types";
  * 공유 썸네일 (1200x630 PNG). 카톡/메시지 미리보기 봇이 로그인 없이 가져가므로 공개 경로.
  * 티켓 화면처럼: 날짜·상태·게이지·시간·PC방·판돈 + 1팀/2팀 10칸 자리표.
  */
-
-// 한글 폰트는 이미지 번들 한도(500KB) 때문에 런타임에 받아서 인스턴스마다 한 번만 캐시
-const FONT_URL = "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/public/static/Pretendard-Bold.otf";
-let font: Promise<ArrayBuffer> | null = null;
-const loadFont = () =>
-  (font ??= fetch(FONT_URL).then((r) => {
-    if (!r.ok) throw new Error(`font ${r.status}`);
-    return r.arrayBuffer();
-  }));
 
 const C = {
   bg: "#0c1322",
@@ -45,7 +37,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dat
   const { date } = await params;
   if (!isValidDate(date)) return new Response("Not found", { status: 404 });
 
-  const [card, fontData] = await Promise.all([getTicket(date, ""), loadFont().catch(() => null)]);
+  const [card, fontData] = await Promise.all([getTicket(date, ""), loadPretendard(700)]);
 
   const seated = card ? seatedCount(card.participants) : 0;
   const status: TicketStatus = card ? ticketStatus(card) : "recruiting";
